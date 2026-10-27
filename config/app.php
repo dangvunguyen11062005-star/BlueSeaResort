@@ -196,6 +196,19 @@ function booking_status($s) {
     return $map[$s] ?? [$s, 'info'];
 }
 
+/* Đơn chuyển khoản: khách đã bấm thanh toán nhưng nhân viên/admin chưa xác nhận đã nhận tiền.
+   Đơn ở trạng thái này CHƯA tính là đã thanh toán (payment_status vẫn 'unpaid', chưa có dòng trong bảng payments). */
+function booking_awaiting_transfer($b) {
+    return ($b['payment_method'] ?? '') === 'Chuyển khoản'
+        && ($b['payment_status'] ?? '') === 'unpaid'
+        && ($b['status'] ?? '') === 'pending';
+}
+
+/* Nhãn trạng thái để hiển thị: đơn đang chờ đối soát chuyển khoản có nhãn riêng */
+function booking_status_for($b) {
+    return booking_awaiting_transfer($b) ? ['Chờ xác nhận chuyển khoản', 'warn'] : booking_status($b['status']);
+}
+
 function room_status($s) {
     $map = [
         'available'   => ['Còn trống', 'ok'],
@@ -281,6 +294,76 @@ function find_free_room(PDO $pdo, $typeId, $in, $out, $preferred = null) {
         if (!$chk->fetchColumn()) return $id;
     }
     return null;
+}
+
+/* Kiểm tra khoảng ngày [vào, ra) hợp lệ để tính phòng trống: đúng định dạng Y-m-d, không ở quá khứ, ngày ra sau ngày vào.
+   Trả về chuỗi lỗi (tiếng Việt) hoặc null nếu hợp lệ. */
+function stay_range_error($in, $out) {
+    $valid = function ($d) { return is_string($d) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $d) && strtotime($d) !== false && date('Y-m-d', strtotime($d)) === $d; };
+    if (!$valid($in) || !$valid($out)) return 'Ngày nhận/trả phòng không hợp lệ.';
+    if ($in < date('Y-m-d')) return 'Ngày nhận phòng không được ở quá khứ.';
+    if ($out <= $in) return 'Ngày trả phòng phải sau ngày nhận phòng.';
+    return null;
+}
+
+/* Số phòng còn trống của một loại phòng trong khoảng [vào, ra).
+   Dùng ĐÚNG điều kiện của find_free_room(): bỏ phòng bảo trì, bỏ đơn đã hủy, và chỉ tính là trùng khi
+   check_in < ngày ra VÀ check_out > ngày vào (khách cũ trả phòng đúng ngày khách mới nhận thì KHÔNG trùng).
+   Trả về ['total' => tổng phòng đang hoạt động, 'free' => số phòng còn trống]. */
+function room_type_availability(PDO $pdo, $typeId, $in, $out) {
+    $tot = $pdo->prepare("SELECT COUNT(*) FROM rooms WHERE room_type_id=? AND status<>'maintenance'");
+    $tot->execute([$typeId]);
+    $free = $pdo->prepare("SELECT COUNT(*) FROM rooms r WHERE r.room_type_id=? AND r.status<>'maintenance'
+        AND NOT EXISTS (SELECT 1 FROM bookings b WHERE b.room_id=r.id AND b.status<>'cancelled' AND b.check_in < ? AND b.check_out > ?)");
+    $free->execute([$typeId, $out, $in]);
+    return ['total' => (int)$tot->fetchColumn(), 'free' => (int)$free->fetchColumn()];
+}
+
+/* Gợi ý tối đa $limit khoảng ngày GẦN NHẤT còn phòng, giữ nguyên số đêm khách chọn.
+   Quét lần lượt lệch 1, 2, 3... ngày về hai phía quanh ngày nhận (tối đa $span ngày), không lùi về quá khứ.
+   Chỉ dùng 2 truy vấn (lấy đơn trong cửa sổ một lần rồi so sánh trong PHP) nên nhẹ dù quét nhiều ngày.
+   Trả về mảng [['check_in' => 'Y-m-d', 'check_out' => 'Y-m-d'], ...] sắp theo ngày nhận. */
+function suggest_free_ranges(PDO $pdo, $typeId, $in, $out, $limit = 3, $span = 21) {
+    $nights = nights_between($in, $out);
+    if ($nights < 1 || $nights > 60) return [];
+    $st = $pdo->prepare("SELECT id FROM rooms WHERE room_type_id=? AND status<>'maintenance'");
+    $st->execute([$typeId]);
+    $roomIds = array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN));
+    if (!$roomIds) return [];
+
+    $from = date('Y-m-d', strtotime($in . ' -' . $span . ' day'));
+    $to = date('Y-m-d', strtotime($out . ' +' . $span . ' day'));
+    $ph = implode(',', array_fill(0, count($roomIds), '?'));
+    $bk = $pdo->prepare("SELECT room_id, check_in, check_out FROM bookings
+                         WHERE room_id IN ($ph) AND status<>'cancelled' AND check_in < ? AND check_out > ?");
+    $bk->execute(array_merge($roomIds, [$to, $from]));
+    $byRoom = [];
+    foreach ($bk->fetchAll() as $r) $byRoom[(int)$r['room_id']][] = [$r['check_in'], $r['check_out']];
+
+    $hasFreeRoom = function ($s, $e) use ($roomIds, $byRoom) {
+        foreach ($roomIds as $rid) {
+            $busy = false;
+            foreach ($byRoom[$rid] ?? [] as $b) {
+                if ($b[0] < $e && $b[1] > $s) { $busy = true; break; }
+            }
+            if (!$busy) return true;
+        }
+        return false;
+    };
+
+    $today = date('Y-m-d');
+    $found = [];
+    for ($d = 1; $d <= $span && count($found) < $limit; $d++) {
+        foreach ([$d, -$d] as $off) {
+            if (count($found) >= $limit) break;
+            $s = date('Y-m-d', strtotime($in . sprintf(' %+d day', $off)));
+            if ($s < $today) continue;
+            $e = date('Y-m-d', strtotime($s . ' +' . $nights . ' day'));
+            if ($hasFreeRoom($s, $e)) $found[] = ['check_in' => $s, 'check_out' => $e];
+        }
+    }
+    usort($found, function ($a, $b) { return strcmp($a['check_in'], $b['check_in']); });
+    return $found;
 }
 
 /* ---------- Thông báo nhanh (hiện 1 lần sau khi chuyển trang) ---------- */

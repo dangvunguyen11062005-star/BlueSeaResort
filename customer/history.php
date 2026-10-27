@@ -27,6 +27,9 @@ include '../includes/header.php';
 <?php if (isset($_GET['success'])): ?>
     <div class="alert success" role="status" style="margin-top:16px"><?= icon('circle-check') ?><span>Đặt phòng <b><?= e($_GET['success']) ?></b> đã được xác nhận và thanh toán thành công.</span></div>
 <?php endif; ?>
+<?php if (isset($_GET['awaiting'])): ?>
+    <div class="alert" role="status" style="margin-top:16px"><?= icon('clock') ?><span>Đã ghi nhận yêu cầu chuyển khoản cho đơn <b><?= e($_GET['awaiting']) ?></b>. Đơn sẽ được xác nhận sau khi lễ tân hoặc quản trị viên kiểm tra và nhận được tiền.</span></div>
+<?php endif; ?>
 
 <div class="tabs" role="tablist" aria-label="Lọc theo trạng thái">
     <?php foreach ($tabs as $key => $label): ?>
@@ -42,7 +45,7 @@ include '../includes/header.php';
         <p style="margin-top:14px"><a class="btn btn-primary btn-small" href="<?= BASE_URL ?>/rooms.php">Xem phòng nghỉ</a></p>
     </div>
 <?php else: foreach ($filtered as $b):
-    [$label, $tone] = booking_status($b['status']);
+    [$label, $tone] = booking_status_for($b);
     $nights = nights_between($b['check_in'], $b['check_out']); ?>
     <div class="history-card">
         <img src="<?= img($b['image']) ?>" alt="">
@@ -60,7 +63,7 @@ include '../includes/header.php';
                     <small>Mã đơn: <?= e($b['booking_code']) ?></small>
                 </div>
                 <?php if ($b['status'] === 'pending' || ($b['payment_status'] === 'unpaid' && $b['status'] !== 'cancelled')): ?>
-                    <a class="btn btn-primary btn-small" href="<?= BASE_URL ?>/payment.php?id=<?= (int)$b['id'] ?>">Thanh toán</a>
+                    <a class="btn btn-primary btn-small" href="<?= BASE_URL ?>/payment.php?id=<?= (int)$b['id'] ?>"><?= booking_awaiting_transfer($b) ? 'Xem thông tin chuyển khoản' : 'Thanh toán' ?></a>
                 <?php else: ?>
                     <div style="display:flex;gap:8px">
                     <?php if ($b['status'] === 'checked_out' && db_is_v2()): ?><a class="btn btn-outline btn-small" href="<?= BASE_URL ?>/customer/reviews.php">Đánh giá</a><?php endif; ?>
@@ -78,7 +81,7 @@ include '../includes/header.php';
                 <dt>Nhận / trả phòng</dt><dd><?= date_vn($b['check_in']) ?> - <?= date_vn($b['check_out']) ?> (<?= $nights ?> đêm)</dd>
                 <dt>Số khách</dt><dd><?= (int)$b['guests'] ?> người</dd>
                 <dt>Trạng thái</dt><dd><span class="badge badge-<?= $tone ?>"><?= $label ?></span></dd>
-                <dt>Thanh toán</dt><dd><?= e($b['payment_method']) ?></dd>
+                <dt>Thanh toán</dt><dd><?= e($b['payment_method']) ?><?= booking_awaiting_transfer($b) ? ' — chờ xác nhận đã nhận tiền' : '' ?></dd>
             </dl>
             <div class="bill-row"><span>Tiền phòng</span><b><?= money($b['room_total']) ?></b></div>
             <div class="bill-row"><span>Dịch vụ thêm</span><b><?= money($b['service_total']) ?></b></div>
