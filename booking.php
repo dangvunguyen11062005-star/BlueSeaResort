@@ -15,6 +15,7 @@ $types = $pdo->query("SELECT rt.id, rt.name, MIN(r.id) room_id FROM room_types r
 
 $stay = stay_defaults();
 $error = '';
+$suggest = [];
 $today = date('Y-m-d');
 $customer = $_SESSION['customer'];
 
@@ -35,6 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $assigned = find_free_room($pdo, $room['room_type_id'], $in, $out, $roomId);
             if (!$assigned) {
                 $error = 'Loại phòng này đã hết phòng trong khoảng thời gian bạn chọn. Vui lòng đổi ngày hoặc chọn loại phòng khác.';
+                $suggest = suggest_free_ranges($pdo, $room['room_type_id'], $in, $out);
             } else {
                 $roomTotal = $room['price'] * $nights; $serviceTotal = 0; $selected = [];
                 foreach ($services as $s) {
@@ -90,7 +92,14 @@ include 'includes/header.php';
         <nav class="crumbs" aria-label="Đường dẫn"><a href="<?= BASE_URL ?>/index.php">Trang chủ</a><?= icon('chevron-right') ?><span>Đặt phòng</span></nav>
         <?php if ($error): ?><div class="alert error" role="alert" style="margin-top:16px"><?= icon('circle-x') ?><span><?= e($error) ?></span></div><?php endif; ?>
 
-        <form method="post" id="booking-form" data-price="<?= (float)$room['price'] ?>">
+        <?php if ($suggest): ?>
+            <div class="alert" role="status" style="margin-top:10px"><?= icon('calendar-days') ?><span>Gợi ý ngày còn phòng (cùng số đêm):
+                <?php foreach ($suggest as $sg): ?>
+                    <a class="btn btn-outline btn-small" style="margin:4px 4px 0 0" href="<?= e(url_with('booking.php', ['room_id' => $roomId, 'check_in' => $sg['check_in'], 'check_out' => $sg['check_out'], 'guests' => $stay['guests']])) ?>"><?= date_vn($sg['check_in'], 'd/m') ?> - <?= date_vn($sg['check_out'], 'd/m/Y') ?></a>
+                <?php endforeach; ?></span></div>
+        <?php endif; ?>
+
+        <form method="post" id="booking-form" data-price="<?= (float)$room['price'] ?>" data-type-id="<?= (int)$room['room_type_id'] ?>" data-avail-url="<?= BASE_URL ?>/api/availability.php">
             <?= csrf_field() ?>
             <input type="hidden" name="room_id" value="<?= $roomId ?>">
             <div class="booking-grid">
@@ -111,6 +120,7 @@ include 'includes/header.php';
                         </select></div>
                     <div class="form-group"><label for="b-in">Ngày nhận</label><div class="with-icon"><input class="input" type="date" id="b-in" name="check_in" value="<?= e($stay['check_in']) ?>" min="<?= $today ?>" required></div></div>
                     <div class="form-group"><label for="b-out">Ngày trả</label><div class="with-icon"><input class="input" type="date" id="b-out" name="check_out" value="<?= e($stay['check_out']) ?>" min="<?= $today ?>" required></div></div>
+                    <div class="avail-box" id="avail-box" aria-live="polite"></div>
                     <div class="form-group"><label for="b-guests">Số khách</label>
                         <select class="input" id="b-guests" name="guests"><?php for ($i = 1; $i <= $room['capacity']; $i++): ?><option value="<?= $i ?>"<?= $i === (int)$stay['guests'] ? ' selected' : '' ?>><?= $i ?> người</option><?php endfor; ?></select></div>
                 </div>

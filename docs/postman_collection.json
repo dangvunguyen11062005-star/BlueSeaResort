@@ -111,6 +111,13 @@
             "method": "GET",
             "url": "{{base_url}}/room_detail.php?id=2"
           }
+        },
+        {
+          "name": "Check availability",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/availability.php?room_type_id=2&check_in=2026-12-10&check_out=2026-12-13"
+          }
         }
       ]
     },

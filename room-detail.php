@@ -35,6 +35,14 @@ $thumbs = [$room['image'], $other, 'pool.svg', 'dunes.svg'];
 $side = ['beach.svg', 'hero.svg', 'sunset.svg', 'restaurant.svg'];
 $amenities = room_amenities($room['amenities']);
 $book = url_with('booking.php', ['room_id' => $room['room_id']] + stay_params());
+
+// Phòng trống theo ngày khách đã chọn (nếu có); hết phòng thì gợi ý các khoảng ngày gần nhất còn phòng
+$stayChosen = stay_defaults();
+$av = null; $suggest = [];
+if (isset($_GET['check_in'], $_GET['check_out']) && stay_range_error($stayChosen['check_in'], $stayChosen['check_out']) === null) {
+    $av = room_type_availability($pdo, $room['id'], $stayChosen['check_in'], $stayChosen['check_out']);
+    if ($av['free'] < 1) $suggest = suggest_free_ranges($pdo, $room['id'], $stayChosen['check_in'], $stayChosen['check_out']);
+}
 include 'includes/header.php';
 ?>
 <section class="section-tight" style="padding-top:14px">
@@ -76,7 +84,23 @@ include 'includes/header.php';
                 </div>
                 <div class="buy-box">
                     <span class="price"><?= money($room['price']) ?><small>/đêm</small></span>
-                    <a class="btn btn-primary" href="<?= $book ?>">Đặt phòng</a>
+                    <?php if ($av): ?>
+                        <p class="avail <?= $av['free'] > 0 ? 'avail-ok' : 'avail-none' ?>"><?= icon($av['free'] > 0 ? 'circle-check' : 'circle-x') ?><?= $av['free'] > 0 ? 'Còn ' . (int)$av['free'] . ' phòng trống (' . date_vn($stayChosen['check_in']) . ' - ' . date_vn($stayChosen['check_out']) . ')' : 'Hết phòng ngày ' . date_vn($stayChosen['check_in']) . ' - ' . date_vn($stayChosen['check_out']) ?></p>
+                    <?php endif; ?>
+                    <?php if ($av && $av['free'] < 1): ?>
+                        <?php if ($suggest): ?>
+                            <p class="avail-note">Gợi ý ngày còn phòng (cùng số đêm):</p>
+                            <div class="suggest-list">
+                                <?php foreach ($suggest as $sg): ?>
+                                    <a class="btn btn-outline btn-small" href="<?= e(url_with('room-detail.php', ['id' => $room['id'], 'check_in' => $sg['check_in'], 'check_out' => $sg['check_out'], 'guests' => $stayChosen['guests']])) ?>"><?= date_vn($sg['check_in'], 'd/m') ?> - <?= date_vn($sg['check_out'], 'd/m/Y') ?></a>
+                                <?php endforeach; ?>
+                            </div>
+                        <?php else: ?>
+                            <p class="avail-note">Chưa tìm thấy ngày trống gần đó, vui lòng thử thời điểm khác.</p>
+                        <?php endif; ?>
+                    <?php else: ?>
+                        <a class="btn btn-primary" href="<?= $book ?>">Đặt phòng</a>
+                    <?php endif; ?>
                 </div>
             </div>
             <?php if ($amenities): ?>

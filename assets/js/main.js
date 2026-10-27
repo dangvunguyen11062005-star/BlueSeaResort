@@ -190,6 +190,77 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
+    /* Trang đặt phòng: báo ngay còn/hết phòng khi đổi ngày, hết phòng thì gợi ý ngày thay thế (gọi api/availability.php).
+       Lỗi mạng/API không chặn đặt phòng - server vẫn kiểm tra lại khi bấm "Tiếp tục thanh toán". */
+    const bookingForm = document.getElementById('booking-form');
+    const availBox = document.getElementById('avail-box');
+    if (bookingForm && availBox && bookingForm.dataset.availUrl) {
+        const inEl = bookingForm.querySelector('[name="check_in"]');
+        const outEl = bookingForm.querySelector('[name="check_out"]');
+        const submitBtn = bookingForm.querySelector('button[type="submit"]');
+        let seq = 0, timer = null;
+        const fmt = d => d.split('-').reverse().join('/');
+        const setBlocked = blocked => { if (submitBtn) submitBtn.disabled = blocked; };
+        const clearBox = () => { availBox.className = 'avail-box'; availBox.textContent = ''; setBlocked(false); };
+
+        const render = data => {
+            availBox.textContent = '';
+            if (data.available) {
+                availBox.className = 'avail-box avail-ok';
+                availBox.textContent = 'Còn ' + data.free_rooms + ' phòng trống trong ' + data.nights + ' đêm đã chọn.';
+                setBlocked(false);
+                return;
+            }
+            availBox.className = 'avail-box avail-none';
+            setBlocked(true);
+            const msg = document.createElement('div');
+            msg.textContent = 'Hết phòng trong khoảng ngày đã chọn.';
+            availBox.appendChild(msg);
+            if (data.suggestions && data.suggestions.length) {
+                const note = document.createElement('div');
+                note.className = 'avail-note';
+                note.textContent = 'Gợi ý ngày còn phòng (cùng số đêm):';
+                availBox.appendChild(note);
+                const list = document.createElement('div');
+                list.className = 'suggest-list';
+                data.suggestions.forEach(sg => {
+                    const b = document.createElement('button');
+                    b.type = 'button';
+                    b.className = 'btn btn-outline btn-small';
+                    b.textContent = fmt(sg.check_in).slice(0, 5) + ' - ' + fmt(sg.check_out);
+                    b.addEventListener('click', () => {
+                        inEl.value = sg.check_in;
+                        outEl.value = sg.check_out;
+                        check();
+                    });
+                    list.appendChild(b);
+                });
+                availBox.appendChild(list);
+            } else {
+                const none = document.createElement('div');
+                none.className = 'avail-note';
+                none.textContent = 'Chưa tìm thấy ngày trống gần đó, hãy thử thời điểm khác hoặc loại phòng khác.';
+                availBox.appendChild(none);
+            }
+        };
+
+        const check = () => {
+            const inV = inEl.value, outV = outEl.value;
+            if (!inV || !outV || outV <= inV) { clearBox(); return; }
+            const mine = ++seq; // bỏ qua kết quả cũ nếu khách đã đổi ngày tiếp
+            const url = bookingForm.dataset.availUrl + '?room_type_id=' + encodeURIComponent(bookingForm.dataset.typeId)
+                + '&check_in=' + encodeURIComponent(inV) + '&check_out=' + encodeURIComponent(outV);
+            fetch(url, { headers: { 'Accept': 'application/json' } })
+                .then(r => r.json())
+                .then(j => { if (mine === seq) { j && j.data ? render(j.data) : clearBox(); } })
+                .catch(() => { if (mine === seq) clearBox(); });
+        };
+        const schedule = () => { clearTimeout(timer); timer = setTimeout(check, 250); };
+        inEl.addEventListener('change', schedule);
+        outEl.addEventListener('change', schedule);
+        check();
+    }
+
     /* Kiểm tra dữ liệu phía trình duyệt cho form có thuộc tính data-validate.
        Quy tắc đặt ở từng ô nhập qua data-rule, ví dụ: data-rule="required email" hoặc "required minlen:6".
        Các quy tắc này khớp với kiểm tra ở server (PHP) - server vẫn là lớp kiểm tra bắt buộc cuối cùng. */

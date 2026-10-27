@@ -181,6 +181,42 @@ paths:
         "200": { description: OK }
         "404": { description: Không tìm thấy, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
 
+  /availability.php:
+    get:
+      tags: [Rooms]
+      summary: Kiểm tra loại phòng còn trống trong khoảng ngày (kèm gợi ý ngày thay thế khi hết phòng)
+      parameters:
+        - { name: room_type_id, in: query, required: true, schema: { type: integer }, example: 2 }
+        - { name: check_in, in: query, required: true, schema: { type: string, format: date }, example: "2026-12-10" }
+        - { name: check_out, in: query, required: true, schema: { type: string, format: date }, example: "2026-12-13" }
+      responses:
+        "200":
+          description: OK. suggestions chỉ có phần tử khi available=false (các khoảng ngày gần nhất còn phòng, cùng số đêm).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      room_type_id: { type: integer }
+                      check_in: { type: string, format: date }
+                      check_out: { type: string, format: date }
+                      nights: { type: integer }
+                      available: { type: boolean }
+                      free_rooms: { type: integer }
+                      total_rooms: { type: integer }
+                      suggestions:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            check_in: { type: string, format: date }
+                            check_out: { type: string, format: date }
+        "404": { description: Loại phòng không tồn tại hoặc không có phòng hoạt động, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        "422": { description: Ngày không hợp lệ / ở quá khứ / ngày trả không sau ngày nhận, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
   /promo_check.php:
     post:
       tags: [Promotions]

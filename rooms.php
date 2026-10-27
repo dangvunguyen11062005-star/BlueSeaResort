@@ -31,6 +31,13 @@ $stmt->execute($params);
 $rooms = $stmt->fetchAll();
 
 $carry = stay_params();
+
+// Chỉ tính phòng trống khi khách đã chọn đủ cả ngày nhận lẫn ngày trả (hợp lệ)
+$checkAvail = isset($_GET['check_in'], $_GET['check_out']) && stay_range_error($stay['check_in'], $stay['check_out']) === null;
+$avail = [];
+if ($checkAvail) {
+    foreach ($rooms as $r) $avail[(int)$r['id']] = room_type_availability($pdo, $r['id'], $stay['check_in'], $stay['check_out']);
+}
 include 'includes/header.php';
 ?>
 <section class="container">
@@ -107,9 +114,17 @@ include 'includes/header.php';
                                 <span><?= icon('maximize') ?><?= (int)$room['area'] ?>m²</span>
                                 <span><?= icon('bed-double') ?><?= e($room['bed_type']) ?></span>
                             </div>
+                            <?php $av = $avail[(int)$room['id']] ?? null; ?>
+                            <?php if ($av): ?>
+                                <p class="avail <?= $av['free'] > 0 ? 'avail-ok' : 'avail-none' ?>"><?= icon($av['free'] > 0 ? 'circle-check' : 'circle-x') ?><?= $av['free'] > 0 ? 'Còn ' . (int)$av['free'] . ' phòng trống' : 'Hết phòng trong ngày đã chọn' ?></p>
+                            <?php endif; ?>
                             <div class="room-card-foot">
                                 <div class="price"><?= money($room['price']) ?><small>/đêm</small></div>
-                                <a class="btn btn-primary btn-small" href="<?= $book ?>">Đặt phòng</a>
+                                <?php if ($av && $av['free'] < 1): ?>
+                                    <a class="btn btn-outline btn-small" href="<?= $detail ?>">Xem ngày khác</a>
+                                <?php else: ?>
+                                    <a class="btn btn-primary btn-small" href="<?= $book ?>">Đặt phòng</a>
+                                <?php endif; ?>
                             </div>
                         </div>
                     </article>

@@ -37,6 +37,7 @@ API + có tài liệu đi kèm" của buổi nghiệm thu.
 | GET | `/me.php` | Có | Thông tin khách đang đăng nhập |
 | GET | `/rooms.php` | Không | Danh sách loại phòng (lọc `guests`, `min_price`, `max_price`) |
 | GET | `/room_detail.php?id=` | Không | Chi tiết 1 loại phòng + đánh giá |
+| GET | `/availability.php?room_type_id=&check_in=&check_out=` | Không | Kiểm tra loại phòng còn trống trong khoảng ngày; hết phòng thì kèm `suggestions` (ngày thay thế gần nhất) |
 | POST | `/promo_check.php` | Không | Kiểm tra mã khuyến mãi |
 | GET | `/bookings.php` | Có | Danh sách đơn của chính mình |
 | POST | `/bookings.php` | Có | Tạo đơn đặt phòng mới |
