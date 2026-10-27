@@ -39,7 +39,7 @@ Email: `nguyenvana@gmail.com` — Mật khẩu: `123456`
 > Vì có thêm yêu cầu bảo mật, trang đăng nhập admin **không còn tự điền sẵn** email/mật khẩu như bản trước — phải tự nhập.
 
 ## 4. Chức năng
-**Khách hàng:** Trang chủ / tìm phòng · Danh sách & chi tiết phòng (có đánh giá thật) · Đăng ký / đăng nhập · Đặt phòng (có ô nhập mã khuyến mãi) · Chọn dịch vụ thêm · Thanh toán bằng **tiền mặt tại resort** hoặc **chuyển khoản ngân hàng** kèm **mã QR (VietQR) quét bằng app ngân hàng thật** (chuyển khoản cần nhân viên/admin xác nhận) · Lịch sử đặt phòng · Viết đánh giá sau khi trả phòng · Đổi thông tin cá nhân / mật khẩu
+**Khách hàng:** Trang chủ / tìm phòng · Danh sách & chi tiết phòng (có đánh giá thật) · Đăng ký / đăng nhập · Đặt phòng (có ô nhập mã khuyến mãi) · Chọn dịch vụ thêm · Thanh toán bằng **tiền mặt tại resort** hoặc **chuyển khoản ngân hàng** kèm **mã QR (VietQR) quét bằng app ngân hàng thật** (cả hai đều cần nhân viên/admin xác nhận đã nhận tiền) · Lịch sử đặt phòng · Viết đánh giá sau khi trả phòng · Đổi thông tin cá nhân / mật khẩu
 
 **Admin:** Dashboard · Quản lý phòng · Quản lý loại phòng · Quản lý đặt phòng · Quản lý khách hàng · Quản lý dịch vụ · Quản lý hóa đơn (xem & in) · Khuyến mãi · Duyệt đánh giá · Thống kê · Cài đặt thông tin resort & đổi mật khẩu
 
@@ -71,7 +71,7 @@ curl -X POST http://localhost/BlueSeaResort/api/login.php \
 
 ## 8. Lưu ý
 - Hệ thống chỉ hỗ trợ 2 phương thức thanh toán: **Tiền mặt (tại resort)** và **Chuyển khoản ngân hàng**. VNPay/MoMo đã được gỡ khỏi giao diện và bị từ chối ở backend (chưa kết nối cổng thanh toán thật).
-- **Luồng chuyển khoản:** khách bấm "Thanh toán ngay" → đơn chuyển sang **"Chờ xác nhận chuyển khoản"** (chưa tính doanh thu, chưa có hóa đơn). Nhân viên lễ tân (Staff) hoặc Administrator kiểm tra tiền đã về tài khoản rồi vào **Admin → Quản lý đặt phòng**, bấm nút ✔ "Xác nhận đã nhận tiền" → đơn mới chuyển sang **Đã xác nhận / Đã thanh toán** và phát sinh hóa đơn. Thao tác xác nhận an toàn khi bấm lặp lại (không tạo trùng hóa đơn).
+- **Luồng thanh toán (cả Tiền mặt và Chuyển khoản):** khách chọn phương thức và bấm "Thanh toán ngay" → đơn chuyển sang **"Chờ thanh toán tại resort"** (tiền mặt) hoặc **"Chờ xác nhận chuyển khoản"** (chuyển khoản); chưa tính doanh thu, chưa có hóa đơn. Nhân viên lễ tân (Staff) hoặc Administrator nhận được tiền (tại quầy hoặc về tài khoản) rồi vào **Admin → Quản lý đặt phòng**, bấm nút ✔ "Xác nhận đã nhận tiền" → đơn mới chuyển sang **Đã xác nhận / Đã thanh toán** và phát sinh hóa đơn. Thao tác xác nhận an toàn khi bấm lặp lại (không tạo trùng hóa đơn).
 - **Chuyển khoản ngân hàng** tạo mã **QR thật theo chuẩn VietQR** (tự dựng chuỗi EMVCo + CRC16, vẽ SVG bằng thư viện PHP thuần `includes/qrcode/qrcode.php` — không gọi ảnh/API qua internet). Vào **Admin → Cài đặt**, mục "Tài khoản nhận chuyển khoản", nhập đúng số tài khoản thật + chọn ngân hàng thì mã QR sẽ quét được bằng app ngân hàng thật (chuyển đúng số tiền + nội dung "TT <mã đơn>" tự động). Việc xác nhận "đã thanh toán" là **thủ công do nhân viên/admin thực hiện** (xem mục trên) vì dự án không có quyền truy cập API đối soát của ngân hàng thật.
 - Hình ảnh trong bản source là SVG minh họa để dự án chạy ngay không cần tải ảnh ngoài.
 - Đổi `BASE_URL` trong `config/app.php` nếu bạn đổi tên thư mục project.

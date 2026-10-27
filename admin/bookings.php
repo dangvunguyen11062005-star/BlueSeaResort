@@ -3,7 +3,7 @@ require_once '../config/database.php';
 require_once '../config/app.php';
 require_admin(); // cả Administrator lẫn Staff (lễ tân) đều được xác nhận tiền chuyển khoản
 
-/* Xác nhận đã nhận tiền chuyển khoản: đơn mới thật sự "đã thanh toán + đã xác nhận" và mới có hóa đơn/doanh thu.
+/* Xác nhận đã nhận tiền (Tiền mặt tại resort hoặc Chuyển khoản): đơn mới thật sự "đã thanh toán + đã xác nhận" và mới có hóa đơn/doanh thu.
    UPDATE có điều kiện nên chỉ một lần bấm thành công - bấm lại hoặc hai người cùng bấm sẽ không tạo trùng hóa đơn. */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'confirm_payment') {
     require_csrf();
@@ -11,18 +11,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'confi
     try {
         $pdo->beginTransaction();
         $up = $pdo->prepare("UPDATE bookings SET payment_status='paid', status='confirmed'
-                             WHERE id=? AND payment_method='Chuyển khoản' AND payment_status='unpaid' AND status='pending'");
+                             WHERE id=? AND payment_method IN ('Tiền mặt','Chuyển khoản') AND payment_status='unpaid' AND status='pending'");
         $up->execute([$id]);
         if ($up->rowCount() === 1) {
-            $row = $pdo->prepare("SELECT grand_total, booking_code FROM bookings WHERE id=?");
+            $row = $pdo->prepare("SELECT grand_total, booking_code, payment_method FROM bookings WHERE id=?");
             $row->execute([$id]);
             $bk = $row->fetch();
-            $pdo->prepare("INSERT INTO payments(booking_id,amount,method) VALUES(?,?,?)")->execute([$id, $bk['grand_total'], 'Chuyển khoản']);
+            $pdo->prepare("INSERT INTO payments(booking_id,amount,method) VALUES(?,?,?)")->execute([$id, $bk['grand_total'], $bk['payment_method']]);
             $pdo->commit();
-            flash_set('Đã xác nhận nhận tiền chuyển khoản cho đơn ' . $bk['booking_code'] . '.');
+            flash_set('Đã xác nhận nhận tiền (' . mb_strtolower($bk['payment_method'], 'UTF-8') . ') cho đơn ' . $bk['booking_code'] . '.');
         } else {
             $pdo->rollBack();
-            flash_set('Không thể xác nhận: đơn không còn ở trạng thái chờ chuyển khoản (có thể đã được xác nhận hoặc đã hủy).', 'error');
+            flash_set('Không thể xác nhận: đơn không còn ở trạng thái chờ xác nhận thanh toán (có thể đã được xác nhận hoặc đã hủy).', 'error');
         }
     } catch (Throwable $ex) {
         if ($pdo->inTransaction()) $pdo->rollBack();
@@ -90,9 +90,9 @@ include '../includes/admin_header.php';
             <td><?= money($b['grand_total']) ?></td>
             <td><span class="badge badge-<?= $tone ?>"><?= $label ?></span></td>
             <td class="actions">
-                <?php if (booking_awaiting_transfer($b)): ?>
-                    <form method="post" data-confirm="Xác nhận ĐÃ NHẬN <?= e(money($b['grand_total'])) ?> chuyển khoản cho đơn <?= e($b['booking_code']) ?>? Đơn sẽ chuyển sang Đã xác nhận và được tính doanh thu."><?= csrf_field() ?><input type="hidden" name="action" value="confirm_payment"><input type="hidden" name="id" value="<?= (int)$b['id'] ?>"><input type="hidden" name="tab" value="<?= e($tab) ?>">
-                        <button class="act" type="submit" title="Xác nhận đã nhận tiền chuyển khoản" style="color:var(--ok)"><?= icon('circle-check') ?></button></form>
+                <?php if (booking_awaiting_payment($b)): ?>
+                    <form method="post" data-confirm="Xác nhận ĐÃ NHẬN <?= e(money($b['grand_total'])) ?> (<?= e(mb_strtolower($b['payment_method'], 'UTF-8')) ?>) cho đơn <?= e($b['booking_code']) ?>? Đơn sẽ chuyển sang Đã xác nhận và được tính doanh thu."><?= csrf_field() ?><input type="hidden" name="action" value="confirm_payment"><input type="hidden" name="id" value="<?= (int)$b['id'] ?>"><input type="hidden" name="tab" value="<?= e($tab) ?>">
+                        <button class="act" type="submit" title="Xác nhận đã nhận tiền" style="color:var(--ok)"><?= icon('circle-check') ?></button></form>
                 <?php endif; ?>
                 <?php if ($b['status'] === 'confirmed'): ?>
                     <form method="post"><?= csrf_field() ?><input type="hidden" name="id" value="<?= (int)$b['id'] ?>"><input type="hidden" name="status" value="checked_in"><input type="hidden" name="tab" value="<?= e($tab) ?>">
@@ -123,7 +123,7 @@ include '../includes/admin_header.php';
             <dt>Nhận / Trả</dt><dd><?= date_vn($b['check_in']) ?> - <?= date_vn($b['check_out']) ?></dd>
             <dt>Số khách</dt><dd><?= (int)$b['guests'] ?> người</dd>
             <dt>Trạng thái</dt><dd><span class="badge badge-<?= $tone ?>"><?= $label ?></span></dd>
-            <dt>Thanh toán</dt><dd><?= e($b['payment_method']) ?> — <?= $b['payment_status'] === 'paid' ? 'Đã thanh toán' : (booking_awaiting_transfer($b) ? 'Chờ xác nhận đã nhận tiền' : 'Chưa thanh toán') ?></dd>
+            <dt>Thanh toán</dt><dd><?= e($b['payment_method']) ?> — <?= $b['payment_status'] === 'paid' ? 'Đã thanh toán' : (booking_awaiting_payment($b) ? 'Chờ xác nhận đã nhận tiền' : 'Chưa thanh toán') ?></dd>
         </dl>
         <div class="bill-row"><span>Tiền phòng</span><b><?= money($b['room_total']) ?></b></div>
         <div class="bill-row"><span>Dịch vụ thêm</span><b><?= money($b['service_total']) ?></b></div>

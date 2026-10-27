@@ -196,17 +196,25 @@ function booking_status($s) {
     return $map[$s] ?? [$s, 'info'];
 }
 
-/* Đơn chuyển khoản: khách đã bấm thanh toán nhưng nhân viên/admin chưa xác nhận đã nhận tiền.
+/* Hai phương thức thanh toán, cả hai đều cần lễ tân/quản trị viên xác nhận đã nhận tiền mới tính là thành công */
+function payment_methods_needing_confirmation() {
+    return ['Tiền mặt', 'Chuyển khoản'];
+}
+
+/* Đơn đã chọn Tiền mặt / Chuyển khoản nhưng nhân viên/admin chưa xác nhận đã nhận tiền.
    Đơn ở trạng thái này CHƯA tính là đã thanh toán (payment_status vẫn 'unpaid', chưa có dòng trong bảng payments). */
-function booking_awaiting_transfer($b) {
-    return ($b['payment_method'] ?? '') === 'Chuyển khoản'
+function booking_awaiting_payment($b) {
+    return in_array($b['payment_method'] ?? '', payment_methods_needing_confirmation(), true)
         && ($b['payment_status'] ?? '') === 'unpaid'
         && ($b['status'] ?? '') === 'pending';
 }
 
-/* Nhãn trạng thái để hiển thị: đơn đang chờ đối soát chuyển khoản có nhãn riêng */
+/* Nhãn trạng thái để hiển thị: đơn đang chờ xác nhận tiền có nhãn riêng theo phương thức */
 function booking_status_for($b) {
-    return booking_awaiting_transfer($b) ? ['Chờ xác nhận chuyển khoản', 'warn'] : booking_status($b['status']);
+    if (booking_awaiting_payment($b)) {
+        return [($b['payment_method'] === 'Tiền mặt') ? 'Chờ thanh toán tại resort' : 'Chờ xác nhận chuyển khoản', 'warn'];
+    }
+    return booking_status($b['status']);
 }
 
 function room_status($s) {

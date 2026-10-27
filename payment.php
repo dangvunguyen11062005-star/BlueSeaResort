@@ -19,11 +19,12 @@ $nights = nights_between($b['check_in'], $b['check_out']);
 // Chỉ còn 2 phương thức. VNPay/MoMo đã được gỡ: khóa này cũng là danh sách trắng ở server,
 // nên gửi thẳng payment_method=VNPay/MoMo bằng công cụ khác cũng bị từ chối.
 $methods = [
-    'Tiền mặt'     => ['cash', 'Thanh toán tại resort', 'Tiền mặt / Thẻ'],
+    'Tiền mặt'     => ['cash', 'Thanh toán tại resort', 'Tiền mặt / Thẻ (cần lễ tân/quản trị viên xác nhận đã nhận tiền)'],
     'Chuyển khoản' => ['bank', 'Chuyển khoản ngân hàng', 'Chuyển khoản trước khi nhận phòng (cần lễ tân/quản trị viên xác nhận)'],
 ];
-$selected = 'Chuyển khoản';
-$awaiting = booking_awaiting_transfer($b);
+$awaiting = booking_awaiting_payment($b);
+// Mặc định chọn lại phương thức khách đã chọn trước đó (nếu đang chờ xác nhận), ngược lại là Chuyển khoản
+$selected = $awaiting ? $b['payment_method'] : 'Chuyển khoản';
 $error = '';
 $bankAccountNo = setting('bank_account_no', '');
 $bankQrSvg = $bankAccountNo !== '' ? vietqr_svg(vietqr_payload(
@@ -36,30 +37,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $method = $_POST['payment_method'] ?? '';
     if (!isset($methods[$method])) {
         $error = 'Vui lòng chọn một phương thức thanh toán hợp lệ.';
-    } elseif ($method === 'Chuyển khoản') {
-        // Chuyển khoản: chỉ GHI NHẬN yêu cầu. Đơn vẫn "chờ thanh toán" cho tới khi lễ tân/quản trị viên
-        // kiểm tra tiền đã về tài khoản và bấm xác nhận (admin/bookings.php) - lúc đó mới tính là đã thanh toán.
+    } else {
+        // Tiền mặt / Chuyển khoản: chỉ GHI NHẬN lựa chọn. Đơn vẫn "chờ thanh toán" cho tới khi lễ tân/quản trị viên
+        // nhận được tiền (tại quầy hoặc về tài khoản) và bấm xác nhận (admin/bookings.php) - lúc đó mới tính là đã thanh toán.
         try {
             $pdo->prepare("UPDATE bookings SET payment_method=? WHERE id=? AND customer_id=? AND payment_status='unpaid' AND status='pending'")
                 ->execute([$method, $id, $_SESSION['customer']['id']]);
         } catch (Throwable $ex) {
-            error_log('[payment][bank] ' . $ex->getMessage());
+            error_log('[payment][' . $method . '] ' . $ex->getMessage());
             $error = 'Không thể ghi nhận yêu cầu thanh toán. Vui lòng thử lại.';
         }
         if ($error === '') redirect(BASE_URL . '/customer/history.php?awaiting=' . urlencode($b['booking_code']));
-    } else {
-        // Tiền mặt: giữ nguyên hành vi cũ (xác nhận ngay)
-        try {
-            $pdo->beginTransaction();
-            $pdo->prepare("UPDATE bookings SET payment_method=?,payment_status='paid',status='confirmed' WHERE id=?")->execute([$method, $id]);
-            $pdo->prepare("INSERT INTO payments(booking_id,amount,method) VALUES(?,?,?)")->execute([$id, $b['grand_total'], $method]);
-            $pdo->commit();
-        } catch (Throwable $ex) {
-            if ($pdo->inTransaction()) $pdo->rollBack();
-            error_log('[payment][cash] ' . $ex->getMessage());
-            $error = 'Không thể xử lý thanh toán. Vui lòng thử lại.';
-        }
-        if ($error === '') redirect(BASE_URL . '/customer/history.php?success=' . urlencode($b['booking_code']));
     }
     if (isset($methods[$method])) $selected = $method;
 }
@@ -78,7 +66,7 @@ include 'includes/header.php';
 
         <?php if ($error): ?><div class="alert error" role="alert"><?= icon('circle-x') ?><span><?= e($error) ?></span></div><?php endif; ?>
         <?php if ($awaiting): ?>
-            <div class="alert" role="status"><?= icon('clock') ?><span>Đơn <b><?= e($b['booking_code']) ?></b> đang <b>chờ xác nhận chuyển khoản</b>. Sau khi lễ tân hoặc quản trị viên kiểm tra và nhận được tiền, đơn sẽ chuyển sang "Đã xác nhận". Bạn có thể quét lại mã QR bên dưới nếu chưa chuyển khoản.</span></div>
+            <div class="alert" role="status"><?= icon('clock') ?><span>Đơn <b><?= e($b['booking_code']) ?></b> đang <b><?= $b['payment_method'] === 'Tiền mặt' ? 'chờ thanh toán tại resort' : 'chờ xác nhận chuyển khoản' ?></b>. Sau khi lễ tân hoặc quản trị viên xác nhận đã nhận được tiền, đơn sẽ chuyển sang "Đã xác nhận".<?= $b['payment_method'] === 'Tiền mặt' ? ' Bạn thanh toán trực tiếp tại quầy lễ tân khi nhận phòng.' : ' Bạn có thể quét lại mã QR bên dưới nếu chưa chuyển khoản.' ?></span></div>
         <?php endif; ?>
 
         <form method="post" class="pay-grid">
@@ -145,7 +133,7 @@ include 'includes/header.php';
                 </div>
 
                 <button class="btn btn-primary btn-block" type="submit" style="height:50px;margin-top:22px;font-size:15px">Thanh toán ngay</button>
-                <p class="muted" style="font-size:12.5px;margin-top:10px;text-align:center">Với chuyển khoản, đơn chỉ được xác nhận sau khi nhân viên resort kiểm tra khoản tiền đã nhận.</p>
+                <p class="muted" style="font-size:12.5px;margin-top:10px;text-align:center">Dù chọn tiền mặt hay chuyển khoản, đơn chỉ được xác nhận sau khi nhân viên resort xác nhận đã nhận tiền.</p>
             </div>
         </form>
     </div>
