@@ -1,0 +1,310 @@
+openapi: 3.0.3
+info:
+  title: BlueSea Resort API
+  description: >
+    REST API cho hệ thống đặt phòng BlueSea Resort (đồ án). Chạy song song với
+    website render HTML truyền thống, dùng chung 1 database MySQL. Xác thực
+    bằng Bearer token (lấy từ /login), không dùng session cookie.
+  version: "1.0.0"
+servers:
+  - url: http://localhost/BlueSeaResort/api
+    description: Môi trường local (XAMPP)
+
+tags:
+  - name: Auth
+  - name: Rooms
+  - name: Promotions
+  - name: Bookings
+  - name: Reviews
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: "Lấy token từ POST /login. Gửi kèm header: Authorization: Bearer <token>"
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code: { type: string, example: validation_error }
+            message: { type: string, example: "Email không đúng định dạng." }
+    Customer:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        phone: { type: string }
+        email: { type: string }
+        address: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+    Room:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string, example: "Deluxe Ocean View" }
+        description: { type: string }
+        price: { type: string, example: "2200000" }
+        capacity: { type: integer }
+        area: { type: integer }
+        bed_type: { type: string }
+        view_type: { type: string }
+        amenities_list: { type: array, items: { type: string } }
+        image_url: { type: string }
+        room_id: { type: integer, description: "ID 1 phòng cụ thể còn hoạt động thuộc loại này, dùng để đặt phòng" }
+    Booking:
+      type: object
+      properties:
+        id: { type: integer }
+        booking_code: { type: string }
+        customer_id: { type: integer }
+        room_id: { type: integer }
+        check_in: { type: string, format: date }
+        check_out: { type: string, format: date }
+        guests: { type: integer }
+        note: { type: string, nullable: true }
+        room_total: { type: string }
+        service_total: { type: string }
+        promo_code: { type: string, nullable: true }
+        discount_amount: { type: string }
+        grand_total: { type: string }
+        status: { type: string, enum: [pending, confirmed, checked_in, checked_out, cancelled] }
+        payment_method: { type: string }
+        payment_status: { type: string, enum: [unpaid, paid] }
+        created_at: { type: string, format: date-time }
+    Review:
+      type: object
+      properties:
+        rating: { type: integer, minimum: 1, maximum: 5 }
+        comment: { type: string }
+        created_at: { type: string, format: date-time }
+        name: { type: string }
+
+paths:
+  /register.php:
+    post:
+      tags: [Auth]
+      summary: Tạo tài khoản khách hàng mới
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, phone, email, password]
+              properties:
+                name: { type: string }
+                phone: { type: string }
+                email: { type: string }
+                password: { type: string, minLength: 6 }
+      responses:
+        "201": { description: Tạo thành công, content: { application/json: { schema: { type: object, properties: { data: { type: object, properties: { customer: { $ref: '#/components/schemas/Customer' } } } } } } } }
+        "409": { description: Email đã tồn tại, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        "422": { description: Dữ liệu không hợp lệ, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  /login.php:
+    post:
+      tags: [Auth]
+      summary: Đăng nhập, nhận Bearer token (hạn 30 ngày)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string }
+                password: { type: string }
+      responses:
+        "200":
+          description: Đăng nhập thành công
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      token: { type: string }
+                      expires_at: { type: string, format: date-time }
+                      customer: { $ref: '#/components/schemas/Customer' }
+        "401": { description: Sai email/mật khẩu, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  /logout.php:
+    post:
+      tags: [Auth]
+      summary: Thu hồi token hiện tại
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: OK }
+        "401": { description: Thiếu/sai token, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  /me.php:
+    get:
+      tags: [Auth]
+      summary: Thông tin khách hàng đang đăng nhập
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: OK }
+        "401": { description: Thiếu/sai token, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  /rooms.php:
+    get:
+      tags: [Rooms]
+      summary: Danh sách loại phòng còn hoạt động (lọc theo số khách, giá)
+      parameters:
+        - { name: guests, in: query, schema: { type: integer, default: 1 } }
+        - { name: min_price, in: query, schema: { type: integer } }
+        - { name: max_price, in: query, schema: { type: integer } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: object, properties: { rooms: { type: array, items: { $ref: '#/components/schemas/Room' } } } }
+
+  /room_detail.php:
+    get:
+      tags: [Rooms]
+      summary: Chi tiết 1 loại phòng + tóm tắt đánh giá
+      parameters:
+        - { name: id, in: query, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: OK }
+        "404": { description: Không tìm thấy, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  /promo_check.php:
+    post:
+      tags: [Promotions]
+      summary: Kiểm tra mã khuyến mãi và số tiền được giảm
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, subtotal]
+              properties:
+                code: { type: string, example: WELCOME10 }
+                subtotal: { type: number, example: 3000000 }
+      responses:
+        "200": { description: Mã hợp lệ }
+        "400": { description: Mã không hợp lệ/hết hạn/chưa đủ điều kiện, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  /bookings.php:
+    get:
+      tags: [Bookings]
+      summary: Danh sách đơn đặt phòng của khách đang đăng nhập
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: OK }
+        "401": { description: Chưa đăng nhập, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    post:
+      tags: [Bookings]
+      summary: Tạo đơn đặt phòng mới
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [room_id, check_in, check_out, guests]
+              properties:
+                room_id: { type: integer, description: "Lấy từ trường room_id của /rooms.php" }
+                check_in: { type: string, format: date }
+                check_out: { type: string, format: date }
+                guests: { type: integer }
+                note: { type: string }
+                promo_code: { type: string }
+                services:
+                  type: array
+                  items:
+                    type: object
+                    properties: { id: { type: integer }, quantity: { type: integer } }
+      responses:
+        "201": { description: Tạo thành công, content: { application/json: { schema: { type: object, properties: { data: { type: object, properties: { booking: { $ref: '#/components/schemas/Booking' } } } } } } } }
+        "401": { description: Chưa đăng nhập, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        "409": { description: Hết phòng trong khoảng ngày đã chọn, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        "422": { description: Dữ liệu không hợp lệ, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  /booking_detail.php:
+    get:
+      tags: [Bookings]
+      summary: Chi tiết 1 đơn (chỉ xem được đơn của chính mình)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: query, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: OK }
+        "404": { description: Không tìm thấy / không có quyền, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  /bank_qr.php:
+    get:
+      tags: [Bookings]
+      summary: Lấy chuỗi VietQR (EMV QR) để tự vẽ mã QR chuyển khoản cho 1 đơn của chính mình
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: booking_id, in: query, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      payload: { type: string, description: "Chuỗi EMV QR đã tính sẵn CRC, đưa thẳng vào thư viện vẽ QR bất kỳ" }
+                      bank_name: { type: string }
+                      account_no: { type: string }
+                      account_name: { type: string }
+                      amount: { type: integer }
+                      message: { type: string }
+        "404": { description: Không tìm thấy / không có quyền, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        "503": { description: Resort chưa cấu hình tài khoản ngân hàng, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  /reviews.php:
+    get:
+      tags: [Reviews]
+      summary: Đánh giá đã duyệt của 1 loại phòng (công khai, không cần đăng nhập)
+      parameters:
+        - { name: room_type_id, in: query, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: object, properties: { reviews: { type: array, items: { $ref: '#/components/schemas/Review' } } } }
+    post:
+      tags: [Reviews]
+      summary: Gửi đánh giá cho 1 đơn đã trả phòng của chính mình (chờ admin duyệt)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [booking_id, rating]
+              properties:
+                booking_id: { type: integer }
+                rating: { type: integer, minimum: 1, maximum: 5 }
+                comment: { type: string }
+      responses:
+        "201": { description: Đã gửi, chờ duyệt }
+        "401": { description: Chưa đăng nhập, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        "409": { description: Không đủ điều kiện đánh giá, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }

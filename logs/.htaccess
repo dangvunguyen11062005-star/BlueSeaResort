@@ -1,0 +1,4 @@
+# Chặn truy cập trực tiếp vào log từ trình duyệt (không để lộ chi tiết lỗi hệ thống)
+Require all denied
+Order deny,allow
+Deny from all

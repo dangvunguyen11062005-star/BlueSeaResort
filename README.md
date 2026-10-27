@@ -1,0 +1,75 @@
+# BlueSea Resort – PHP + MySQL + XAMPP
+
+Website đặt phòng và quản lý resort Phan Thiết – Mũi Né, dựng theo mockup.
+
+## 1. Yêu cầu
+- XAMPP (Apache + MySQL)
+- PHP 8.x trở lên
+- Visual Studio Code
+- Trình duyệt Chrome/Edge
+
+## 2. Cài đặt
+1. Copy thư mục `BlueSeaResort` vào:
+   `C:\xampp\htdocs\`
+2. Mở XAMPP, Start **Apache** và **MySQL**.
+3. Vào `http://localhost/phpmyadmin`.
+4. Chọn Import và import lần lượt (đúng thứ tự):
+   1. `database/bluesea_resort.sql` (tạo database, bảng và dữ liệu phòng/dịch vụ cơ bản)
+   2. `database/demo_bookings.sql` — **tùy chọn**, thêm 3 khách hàng mẫu và ~190 đơn đặt phòng trong 12 tháng gần nhất để Dashboard/Thống kê/Lịch sử có số liệu giống mockup. Import sau file 1.
+   - **Nếu bạn đã import `bluesea_resort.sql` từ bản trước** (không có chức năng Loại phòng / Hóa đơn / Khuyến mãi / Đánh giá / Cài đặt) và không muốn mất dữ liệu đang có: chọn database `bluesea_resort` → Import file **`database/upgrade_v2.sql`** (chỉ cần 1 lần, chạy lại nhiều lần cũng không lỗi). Ai cài mới hoàn toàn thì **không cần** file này.
+   - ⚠️ Nếu import bằng dòng lệnh `mysql` thay vì phpMyAdmin, luôn thêm `--default-character-set=utf8mb4` để tránh lỗi hiển thị tiếng Việt (mojibake), ví dụ:
+     `mysql --default-character-set=utf8mb4 -u root < database/bluesea_resort.sql`
+   - Muốn xóa dữ liệu demo: import lại `bluesea_resort.sql` (sẽ xóa toàn bộ và tạo lại từ đầu).
+5. Mở VS Code:
+   `File > Open Folder > C:\xampp\htdocs\BlueSeaResort`
+6. Truy cập:
+   `http://localhost/BlueSeaResort/`
+
+## 3. Tài khoản demo
+### Khách hàng
+Email: `nguyenvana@gmail.com` — Mật khẩu: `123456`
+(3 khách khác nếu đã import `demo_bookings.sql`: `tranthib@gmail.com`, `leminhc@gmail.com`, `phamquocd@gmail.com`, cùng mật khẩu `123456`)
+
+### Admin — 2 vai trò (RBAC)
+| Vai trò | Email | Mật khẩu | Quyền |
+|---|---|---|---|
+| **Administrator** | `admin@bluesearesort.vn` | `admin123` | Toàn quyền, bao gồm Loại phòng, Dịch vụ, Khuyến mãi, Cài đặt |
+| **Staff** (nhân viên lễ tân) | `staff@bluesearesort.vn` | `staff123` | Dashboard, Quản lý phòng (đổi trạng thái), Đặt phòng, Khách hàng, Hóa đơn, Đánh giá, Thống kê — **không** được vào Loại phòng/Dịch vụ/Khuyến mãi/Cài đặt (menu hiện khóa 🔒, vào thẳng URL cũng bị chặn ở backend) |
+
+> Vì có thêm yêu cầu bảo mật, trang đăng nhập admin **không còn tự điền sẵn** email/mật khẩu như bản trước — phải tự nhập.
+
+## 4. Chức năng
+**Khách hàng:** Trang chủ / tìm phòng · Danh sách & chi tiết phòng (có đánh giá thật) · Đăng ký / đăng nhập · Đặt phòng (có ô nhập mã khuyến mãi) · Chọn dịch vụ thêm · Thanh toán demo kèm **mã QR chuyển khoản ngân hàng (VietQR) quét bằng app ngân hàng thật** · Lịch sử đặt phòng · Viết đánh giá sau khi trả phòng · Đổi thông tin cá nhân / mật khẩu
+
+**Admin:** Dashboard · Quản lý phòng · Quản lý loại phòng · Quản lý đặt phòng · Quản lý khách hàng · Quản lý dịch vụ · Quản lý hóa đơn (xem & in) · Khuyến mãi · Duyệt đánh giá · Thống kê · Cài đặt thông tin resort & đổi mật khẩu
+
+**REST API** (song song với website, xem mục 7): đăng ký/đăng nhập, danh sách & chi tiết phòng, kiểm tra mã khuyến mãi, tạo & xem đơn đặt phòng, đánh giá.
+
+## 5. Bảo mật (đáp ứng tiêu chuẩn nghiệm thu)
+- **Mật khẩu:** băm bằng `password_hash()` (bcrypt), không còn lưu dạng SHA2 thuần. Tài khoản tạo từ các bản cũ (hash SHA2) vẫn đăng nhập được và **tự động nâng cấp** lên bcrypt ngay sau lần đăng nhập thành công đầu tiên — không cần làm gì thêm.
+- **Session:** `session_regenerate_id()` sau mỗi lần đăng nhập (khách & admin), chống session fixation.
+- **CSRF:** mọi form POST (đặt phòng, thanh toán, đăng nhập/đăng ký, toàn bộ thao tác thêm/sửa/xóa trong admin...) đều có token ẩn, kiểm tra bằng `require_csrf()`. Submit thiếu token hoặc token sai → bị từ chối, quay lại trang với thông báo.
+- **Phân quyền (RBAC):** 2 vai trò admin (`admin`/`staff`), kiểm tra ở backend bằng `require_admin('admin')`, không chỉ ẩn ở giao diện.
+- **Validate dữ liệu:** email dùng `filter_var(FILTER_VALIDATE_EMAIL)` ở server (không chỉ dựa vào `type="email"` của trình duyệt), số điện thoại, ngày tháng, số khách... đều được kiểm tra trước khi ghi database.
+- **Xử lý ngoại lệ toàn cục:** `config/app.php` đăng ký `set_error_handler` / `set_exception_handler` / `register_shutdown_function`. Mọi lỗi PHP/SQL không mong muốn được ghi vào `logs/app.log`, người dùng chỉ thấy trang "Rất tiếc, có lỗi xảy ra" — không lộ đường dẫn file, câu SQL hay stack trace. Thư mục `logs/` có `.htaccess` chặn truy cập trực tiếp từ trình duyệt.
+
+## 6. Cơ sở dữ liệu
+- Các khóa ngoại đều được đặt tên rõ ràng (`fk_bookings_customer`, `fk_rooms_room_type`...) kèm `ON DELETE RESTRICT` (không cho xóa loại phòng/khách hàng còn dữ liệu liên quan) hoặc `ON DELETE CASCADE` (xóa đơn thì dịch vụ/thanh toán đi kèm cũng được xóa) — xem chi tiết trong `database/bluesea_resort.sql`.
+- Seed data thực tế: 5 loại phòng, 8 phòng, 5 dịch vụ, 3 khuyến mãi, và (nếu import `demo_bookings.sql`) ~190 đơn đặt phòng trong 12 tháng + 42 đánh giá mẫu.
+
+## 7. REST API (`/api`)
+Tầng API JSON độc lập, xác thực bằng Bearer token, phục vụ tích hợp (app di động, hệ thống khác...).
+Tài liệu đầy đủ: **`docs/API.md`** (đọc trực tiếp), **`docs/openapi.yaml`** (dán vào https://editor.swagger.io để xem dạng Swagger UI), **`docs/postman_collection.json`** (import vào Postman).
+
+```bash
+curl -X POST http://localhost/BlueSeaResort/api/login.php \
+  -H "Content-Type: application/json" \
+  -d '{"email":"nguyenvana@gmail.com","password":"123456"}'
+```
+
+## 8. Lưu ý
+- Thanh toán VNPay/MoMo hiện là **demo**, chưa kết nối cổng thanh toán thật.
+- Riêng **Chuyển khoản ngân hàng** tạo mã **QR thật theo chuẩn VietQR** (tự dựng chuỗi EMVCo + CRC16, vẽ SVG bằng thư viện PHP thuần `includes/qrcode/qrcode.php` — không gọi ảnh/API qua internet). Vào **Admin → Cài đặt**, mục "Tài khoản nhận chuyển khoản", nhập đúng số tài khoản thật + chọn ngân hàng thì mã QR sẽ quét được bằng app ngân hàng thật (chuyển đúng số tiền + nội dung "TT <mã đơn>" tự động). Việc xác nhận "đã thanh toán" vẫn là **thủ công** (khách bấm nút sau khi chuyển khoản) vì dự án không có quyền truy cập API đối soát của ngân hàng thật.
+- Hình ảnh trong bản source là SVG minh họa để dự án chạy ngay không cần tải ảnh ngoài.
+- Đổi `BASE_URL` trong `config/app.php` nếu bạn đổi tên thư mục project.
+- API hiện phục vụ luồng khách hàng (đăng nhập, phòng, đặt phòng, đánh giá); các trang quản trị (admin) chưa có endpoint API riêng, vẫn dùng giao diện web.

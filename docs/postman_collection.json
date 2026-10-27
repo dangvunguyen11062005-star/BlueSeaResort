@@ -1,0 +1,252 @@
+{
+  "info": {
+    "name": "BlueSea Resort API",
+    "description": "Postman collection cho REST API của BlueSea Resort. Import file này vào Postman (File > Import).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost/BlueSeaResort/api"
+    },
+    {
+      "key": "token",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Nguyen Van Test\",\n  \"phone\": \"0911222333\",\n  \"email\": \"test@example.com\",\n  \"password\": \"123456\"\n}"
+            },
+            "url": "{{base_url}}/register.php"
+          }
+        },
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const data = pm.response.json().data;",
+                  "  pm.collectionVariables.set('token', data.token);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"nguyenvana@gmail.com\",\n  \"password\": \"123456\"\n}"
+            },
+            "url": "{{base_url}}/login.php"
+          },
+          "description": "Đăng nhập xong token tự lưu vào biến {{token}} để các request sau dùng."
+        },
+        {
+          "name": "Me",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/me.php"
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/logout.php"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Rooms",
+      "item": [
+        {
+          "name": "List rooms",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/rooms.php?guests=2"
+          }
+        },
+        {
+          "name": "Room detail",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/room_detail.php?id=2"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Promotions",
+      "item": [
+        {
+          "name": "Check promo code",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"WELCOME10\",\n  \"subtotal\": 3000000\n}"
+            },
+            "url": "{{base_url}}/promo_check.php"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Bookings",
+      "item": [
+        {
+          "name": "Create booking",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const b = pm.response.json().data.booking;",
+                  "  pm.collectionVariables.set('booking_id', b.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"room_id\": 2,\n  \"check_in\": \"2026-12-10\",\n  \"check_out\": \"2026-12-13\",\n  \"guests\": 2,\n  \"note\": \"Đặt qua Postman\",\n  \"promo_code\": \"WELCOME10\",\n  \"services\": [ { \"id\": 1, \"quantity\": 1 } ]\n}"
+            },
+            "url": "{{base_url}}/bookings.php"
+          }
+        },
+        {
+          "name": "List my bookings",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/bookings.php"
+          }
+        },
+        {
+          "name": "Booking detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/booking_detail.php?id={{booking_id}}"
+          }
+        },
+        {
+          "name": "Get bank transfer QR payload",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/bank_qr.php?booking_id={{booking_id}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reviews",
+      "item": [
+        {
+          "name": "List approved reviews of a room type",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/reviews.php?room_type_id=2"
+          }
+        },
+        {
+          "name": "Submit review",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"booking_id\": {{booking_id}},\n  \"rating\": 5,\n  \"comment\": \"Gửi qua Postman\"\n}"
+            },
+            "url": "{{base_url}}/reviews.php"
+          }
+        }
+      ]
+    }
+  ]
+}

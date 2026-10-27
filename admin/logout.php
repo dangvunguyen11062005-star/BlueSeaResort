@@ -1,0 +1,1 @@
+<?php require_once '../config/app.php'; unset($_SESSION['admin']); redirect(BASE_URL.'/admin/login.php'); ?>
