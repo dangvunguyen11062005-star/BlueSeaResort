@@ -189,4 +189,73 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
     });
+
+    /* Kiểm tra dữ liệu phía trình duyệt cho form có thuộc tính data-validate.
+       Quy tắc đặt ở từng ô nhập qua data-rule, ví dụ: data-rule="required email" hoặc "required minlen:6".
+       Các quy tắc này khớp với kiểm tra ở server (PHP) - server vẫn là lớp kiểm tra bắt buộc cuối cùng. */
+    const RULE_MESSAGES = {
+        required: 'Vui lòng nhập thông tin này.',
+        email: 'Email không đúng định dạng (ví dụ: ten@gmail.com).',
+        phone: 'Số điện thoại không hợp lệ (8-15 ký tự, chỉ gồm số, dấu + - và khoảng trắng).',
+        maxlen: n => 'Không được vượt quá ' + n + ' ký tự.',
+        minlen: n => 'Cần tối thiểu ' + n + ' ký tự.'
+    };
+
+    function checkField(input) {
+        const value = input.value.trim();
+        const rules = (input.dataset.rule || '').split(/\s+/).filter(Boolean);
+        for (const rule of rules) {
+            const [name, arg] = rule.split(':');
+            if (name === 'required' && value === '') return RULE_MESSAGES.required;
+            if (value === '') continue; // các quy tắc khác chỉ áp dụng khi đã nhập
+            if (name === 'email' && !(/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) && value.length <= 150)) return RULE_MESSAGES.email;
+            if (name === 'phone' && !/^[0-9+\-\s]{8,15}$/.test(value)) return RULE_MESSAGES.phone;
+            if (name === 'minlen' && input.value.length < parseInt(arg, 10)) return RULE_MESSAGES.minlen(arg);
+            if (name === 'maxlen' && value.length > parseInt(arg, 10)) return RULE_MESSAGES.maxlen(arg);
+        }
+        return '';
+    }
+
+    function showFieldError(input, message) {
+        const group = input.closest('.form-group') || input.parentNode;
+        let box = group.querySelector('.field-error');
+        if (!message) {
+            input.classList.remove('invalid');
+            input.removeAttribute('aria-invalid');
+            if (box) box.remove();
+            return;
+        }
+        input.classList.add('invalid');
+        input.setAttribute('aria-invalid', 'true');
+        if (!box) {
+            box = document.createElement('small');
+            box.className = 'field-error';
+            box.setAttribute('role', 'alert');
+            group.appendChild(box);
+        }
+        box.textContent = message;
+    }
+
+    document.querySelectorAll('form[data-validate]').forEach(form => {
+        form.setAttribute('novalidate', ''); // dùng thông báo tiếng Việt của mình thay cho bong bóng mặc định của trình duyệt
+        const fields = Array.from(form.querySelectorAll('[data-rule]'));
+        fields.forEach(input => {
+            input.addEventListener('blur', () => showFieldError(input, checkField(input)));
+            input.addEventListener('input', () => {
+                if (input.classList.contains('invalid')) showFieldError(input, checkField(input));
+            });
+        });
+        form.addEventListener('submit', e => {
+            let firstBad = null;
+            fields.forEach(input => {
+                const msg = checkField(input);
+                showFieldError(input, msg);
+                if (msg && !firstBad) firstBad = input;
+            });
+            if (firstBad) {
+                e.preventDefault();
+                firstBad.focus();
+            }
+        });
+    });
 });

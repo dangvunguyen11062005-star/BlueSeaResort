@@ -3,10 +3,17 @@ require_once '../config/database.php';
 require_once '../config/app.php';
 require_admin();
 
+// Staff chỉ được đổi trạng thái phòng (qua room-status.php); thêm/xóa phòng chỉ dành cho Administrator
+$canManageRooms = !is_admin_role('staff');
+
 $types = $pdo->query("SELECT * FROM room_types ORDER BY id")->fetchAll();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     require_csrf();
+    if (!$canManageRooms) {
+        flash_set('Tài khoản Staff chỉ được đổi trạng thái phòng. Thêm hoặc xóa phòng cần quyền Administrator.', 'error');
+        redirect(BASE_URL . '/admin/rooms.php');
+    }
     if (($_POST['action'] ?? '') === 'delete') {
         try {
             $pdo->prepare("DELETE FROM rooms WHERE id=?")->execute([(int)$_POST['id']]);
@@ -46,7 +53,9 @@ include '../includes/admin_header.php';
 ?>
 <div class="admin-head">
     <div><h1><?= icon('bed-double') ?>Quản lý phòng</h1><p>Danh sách toàn bộ phòng nghỉ tại BlueSea Resort</p></div>
+    <?php if ($canManageRooms): ?>
     <button class="btn btn-primary" type="button" data-open-dialog="dlg-add-room"><?= icon('plus') ?>Thêm phòng</button>
+    <?php endif; ?>
 </div>
 
 <form class="toolbar" method="get">
@@ -72,12 +81,14 @@ include '../includes/admin_header.php';
             <td><span class="badge badge-<?= $tone ?>"><?= $label ?></span></td>
             <td class="actions">
                 <button class="act" type="button" title="Sửa" data-open-dialog="dlg-edit-<?= (int)$r['id'] ?>"><?= icon('pencil') ?></button>
+                <?php if ($canManageRooms): ?>
                 <form method="post" data-confirm="Xóa phòng <?= e($r['room_code']) ?>?">
                     <?= csrf_field() ?>
                     <input type="hidden" name="action" value="delete">
                     <input type="hidden" name="id" value="<?= (int)$r['id'] ?>">
                     <button class="act del" type="submit" title="Xóa"><?= icon('trash-2') ?></button>
                 </form>
+                <?php endif; ?>
             </td>
         </tr>
         <?php endforeach; ?>
@@ -85,6 +96,7 @@ include '../includes/admin_header.php';
     </table>
 </div>
 
+<?php if ($canManageRooms): ?>
 <dialog id="dlg-add-room">
     <div class="dialog-head"><h3>Thêm phòng mới</h3><button class="icon-btn" type="button" data-close-dialog aria-label="Đóng"><?= icon('x') ?></button></div>
     <form method="post" class="dialog-body">
@@ -98,6 +110,7 @@ include '../includes/admin_header.php';
         <button class="btn btn-primary btn-block">Lưu phòng</button>
     </form>
 </dialog>
+<?php endif; ?>
 <?php foreach ($rooms as $r): ?>
 <dialog id="dlg-edit-<?= (int)$r['id'] ?>">
     <div class="dialog-head"><h3>Phòng <?= e($r['room_code']) ?></h3><button class="icon-btn" type="button" data-close-dialog aria-label="Đóng"><?= icon('x') ?></button></div>

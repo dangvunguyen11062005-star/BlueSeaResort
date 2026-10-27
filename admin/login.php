@@ -32,10 +32,10 @@ include '../includes/header.php';
         <h1>Đăng nhập quản trị</h1>
         <p class="sub">Khu vực dành cho quản trị viên</p>
         <?php if ($error): ?><div class="alert error" role="alert"><?= icon('circle-x') ?><span><?= e($error) ?></span></div><?php endif; ?>
-        <form method="post">
+        <form method="post" data-validate>
             <?= csrf_field() ?>
-            <div class="form-group"><label for="a-email">Email</label><input class="input" id="a-email" type="email" name="email" autocomplete="username" required></div>
-            <div class="form-group"><label for="a-password">Mật khẩu</label><input class="input" id="a-password" type="password" name="password" autocomplete="current-password" required></div>
+            <div class="form-group"><label for="a-email">Email</label><input class="input" id="a-email" type="email" name="email" autocomplete="username" data-rule="required email" required></div>
+            <div class="form-group"><label for="a-password">Mật khẩu</label><input class="input" id="a-password" type="password" name="password" autocomplete="current-password" data-rule="required" required></div>
             <button class="btn btn-primary btn-block" style="height:48px">Đăng nhập</button>
         </form>
         <p class="alt"><a href="<?= BASE_URL ?>/index.php">← Về trang khách hàng</a></p>

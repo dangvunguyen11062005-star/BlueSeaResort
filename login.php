@@ -33,11 +33,11 @@ include 'includes/header.php';
         <h1>Đăng nhập</h1>
         <p class="sub">Đăng nhập để đặt phòng và xem lịch sử của bạn</p>
         <?php if ($error): ?><div class="alert error" role="alert"><?= icon('circle-x') ?><span><?= e($error) ?></span></div><?php endif; ?>
-        <form method="post">
+        <form method="post" data-validate>
             <?= csrf_field() ?>
             <input type="hidden" name="next" value="<?= e($next) ?>">
-            <div class="form-group"><label for="email">Email</label><input class="input" id="email" type="email" name="email" value="<?= e($_POST['email'] ?? '') ?>" autocomplete="email" required></div>
-            <div class="form-group"><label for="password">Mật khẩu</label><input class="input" id="password" type="password" name="password" autocomplete="current-password" required></div>
+            <div class="form-group"><label for="email">Email</label><input class="input" id="email" type="email" name="email" value="<?= e($_POST['email'] ?? '') ?>" autocomplete="email" data-rule="required email" required></div>
+            <div class="form-group"><label for="password">Mật khẩu</label><input class="input" id="password" type="password" name="password" autocomplete="current-password" data-rule="required" required></div>
             <button class="btn btn-primary btn-block" style="height:48px">Đăng nhập</button>
         </form>
         <p class="alt">Chưa có tài khoản? <a href="<?= BASE_URL ?>/register.php<?= $next !== BASE_URL . '/customer/history.php' ? '?next=' . urlencode($next) : '' ?>">Đăng ký</a></p>
