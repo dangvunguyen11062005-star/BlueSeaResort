@@ -14,4 +14,14 @@ return [
     'DB_NAME' => 'bluesea_resort',
     'DB_USER' => 'bluesea_app',                     // tạo user riêng, chỉ cấp quyền trên DB này
     'DB_PASS' => 'doi-mat-khau-manh-o-day',
+
+    // --- Tích hợp AI (chatbot tư vấn khách hàng). Để trống AI_API_KEY = tắt AI, website vẫn chạy ---
+    // Cách 1: Google Gemini (có gói MIỄN PHÍ, không cần thẻ). Lấy khóa tại https://aistudio.google.com/apikey
+    //   Lưu ý: gói miễn phí có thể bị Google dùng dữ liệu để cải thiện sản phẩm -> đừng dùng cho dữ liệu khách thật; có giới hạn số lượt/ngày.
+    // 'AI_PROVIDER'    => 'gemini',
+    // 'AI_MODEL'       => 'gemini-3.5-flash-lite',
+    // Cách 2: Claude (trả phí theo lượt). Khóa tại https://console.anthropic.com
+    'AI_PROVIDER'    => 'anthropic',
+    'AI_API_KEY'     => '',                         // KHÔNG commit khóa thật
+    'AI_MODEL'       => 'claude-haiku-5-5',         // chatbot (nhanh, rẻ)
 ];

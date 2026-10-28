@@ -34,6 +34,29 @@
     <div class="copyright">© <?= date('Y') ?> <?= e(setting('resort_name', 'BlueSea Resort')) ?>. Bảo lưu mọi quyền.</div>
 </footer>
 <?php endif; ?>
+<?php if (empty($hide_chatbot)): ?>
+<div id="ai-chat" class="ai-chat" data-endpoint="<?= BASE_URL ?>/api/chat.php" data-csrf="<?= e(csrf_token()) ?>"
+     data-welcome="Xin chào! Mình là trợ lý ảo của <?= e(setting('resort_name', 'BlueSea Resort')) ?>. Mình có thể tư vấn phòng, giá, khuyến mãi, dịch vụ và kiểm tra phòng trống giúp bạn.">
+    <button class="ai-chat-toggle" type="button" aria-expanded="false" aria-controls="ai-chat-panel" aria-label="Mở trợ lý AI tư vấn"><?= icon('sparkles') ?><span>Tư vấn AI</span></button>
+    <div class="ai-chat-panel" id="ai-chat-panel" role="dialog" aria-label="Trợ lý AI tư vấn" hidden>
+        <div class="ai-chat-head"><div><b>Trợ lý <?= e(setting('resort_name', 'BlueSea Resort')) ?></b><small>Trả lời tự động bằng AI</small></div>
+            <button class="ai-chat-close" type="button" aria-label="Đóng"><?= icon('x') ?></button></div>
+        <div class="ai-chat-log" aria-live="polite"></div>
+        <div class="ai-chat-chips">
+            <button type="button" data-q="Resort có những loại phòng nào và giá bao nhiêu?">Loại phòng & giá</button>
+            <button type="button" data-q="Hiện có khuyến mãi nào không?">Khuyến mãi</button>
+            <button type="button" data-q="Gia đình 4 người, ngân sách khoảng 5 triệu/đêm thì nên chọn phòng nào?">Gợi ý cho gia đình</button>
+            <button type="button" data-q="Giờ nhận phòng và trả phòng là mấy giờ?">Giờ nhận/trả phòng</button>
+        </div>
+        <form class="ai-chat-form" autocomplete="off">
+            <input type="text" maxlength="500" placeholder="Nhập câu hỏi của bạn…" aria-label="Câu hỏi">
+            <button class="btn btn-primary btn-small" type="submit" aria-label="Gửi"><?= icon('arrow-right') ?></button>
+        </form>
+        <small class="ai-chat-note">AI có thể sai sót – vui lòng xác nhận lại với lễ tân khi đặt phòng.</small>
+    </div>
+</div>
+<script src="<?= BASE_URL ?>/assets/js/chatbot.js?v=<?= @filemtime(__DIR__ . '/../assets/js/chatbot.js') ?: 1 ?>"></script>
+<?php endif; ?>
 <script src="<?= BASE_URL ?>/assets/js/main.js?v=<?= @filemtime(__DIR__ . '/../assets/js/main.js') ?: 1 ?>"></script>
 </body>
 </html>

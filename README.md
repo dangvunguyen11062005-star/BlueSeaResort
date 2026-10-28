@@ -48,7 +48,7 @@ Email: `nguyenvana@gmail.com` — Mật khẩu: `123456`
 
 **Phòng trống:** chọn ngày ở trang Phòng nghỉ để thấy "Còn N phòng / Hết phòng"; trang Đặt phòng tự kiểm tra khi đổi ngày và **gợi ý khoảng ngày gần nhất còn phòng** (cùng số đêm) khi hết phòng.
 
-**REST API** (song song với website, xem mục 7): đăng ký/đăng nhập, danh sách & chi tiết phòng, kiểm tra phòng trống theo ngày (`availability.php`), kiểm tra mã khuyến mãi, tạo & xem đơn đặt phòng, đánh giá.
+**Chatbot AI tư vấn** (xem mục 8) · **REST API** (song song với website, xem mục 7): đăng ký/đăng nhập, danh sách & chi tiết phòng, kiểm tra phòng trống theo ngày (`availability.php`), kiểm tra mã khuyến mãi, tạo & xem đơn đặt phòng, đánh giá.
 
 ## 5. Bảo mật (đáp ứng tiêu chuẩn nghiệm thu)
 - **Mật khẩu:** băm bằng `password_hash()` (bcrypt), không còn lưu dạng SHA2 thuần. Tài khoản tạo từ các bản cũ (hash SHA2) vẫn đăng nhập được và **tự động nâng cấp** lên bcrypt ngay sau lần đăng nhập thành công đầu tiên — không cần làm gì thêm.
@@ -79,7 +79,28 @@ curl -X POST http://localhost/BlueSeaResort/api/login.php \
   -d '{"email":"nguyenvana@gmail.com","password":"123456"}'
 ```
 
-## 8. Triển khai lên máy chủ thật (checklist)
+
+## 8. Chatbot AI tư vấn khách hàng
+
+Nút **“Tư vấn AI”** nổi ở góc phải dưới mọi trang (`includes/footer.php`, `assets/js/chatbot.js`), xử lý ở `api/chat.php`, lõi AI ở `includes/ai.php`. Khách hỏi bằng tiếng Việt về phòng, giá, tiện nghi, dịch vụ, khuyến mãi, giờ nhận/trả phòng, phòng trống… AI dùng các *công cụ* đọc dữ liệu thật của resort: tìm phòng theo số khách/ngân sách, kiểm tra phòng trống & gợi ý ngày thay thế, tính giá + mã khuyến mãi, dịch vụ, thông tin resort, và đơn của **chính khách đang đăng nhập**. Chatbot chỉ gửi link đặt phòng để khách tự đặt, không tạo/sửa/hủy đơn.
+
+Gọi AI qua cURL (không cần cài thư viện), hỗ trợ **2 nhà cung cấp** – chọn bằng `AI_PROVIDER` trong `config/local.php`:
+
+| Nhà cung cấp | Chi phí | Cấu hình |
+|---|---|---|
+| **Google Gemini** | Có gói **miễn phí** (không cần thẻ, có giới hạn lượt/ngày). Khóa tại https://aistudio.google.com/apikey | `'AI_PROVIDER' => 'gemini'`, `'AI_API_KEY' => '…'`, `'AI_MODEL' => 'gemini-3.5-flash-lite'` |
+| **Claude** (mặc định) | Trả phí theo lượt, cần nạp tiền. Khóa tại https://console.anthropic.com | `'AI_PROVIDER' => 'anthropic'`, `'AI_API_KEY' => '…'`, `'AI_MODEL' => 'claude-haiku-5-5'` |
+
+Tên model có thể thay đổi theo thời gian – xem danh sách hiện hành của nhà cung cấp rồi sửa `AI_MODEL`.
+
+**Bật chatbot:** sao chép `config/local.example.php` → `config/local.php`, chọn nhà cung cấp và điền `AI_API_KEY`. Import thêm `database/upgrade_v4.sql` để ghi nhật ký câu hỏi (không bắt buộc). **Không commit khóa API** – `config/local.php` đã nằm trong `.gitignore`. Cần PHP có extension `curl` (XAMPP bật sẵn). Không có khóa API thì chatbot vẫn chạy ở chế độ dự phòng: trả lời theo từ khóa bằng dữ liệu thật; AI lỗi/hết lượt cũng tự chuyển sang chế độ này.
+
+⚠️ **Gói miễn phí của Gemini:** Google có thể dùng nội dung gửi qua gói miễn phí để cải thiện sản phẩm và nhân viên Google có thể đọc. Phù hợp để học tập/demo; chạy thật với khách nên dùng gói trả phí.
+
+**An toàn:** AI chỉ *đọc* dữ liệu qua công cụ do server định nghĩa. Khách chỉ xem được đơn của mình (id lấy từ session, không nhận từ AI). Câu hỏi của khách được coi là *dữ liệu*, có chỉ dẫn chống prompt-injection. Endpoint yêu cầu CSRF token và giới hạn 30 lượt/giờ/IP (chỉnh ở `api/chat.php`). Giao diện dựng DOM bằng `textContent` nên không bị XSS; JS nằm trong file riêng nên vẫn tuân thủ CSP hiện có.
+**Quyền riêng tư:** bảng `ai_logs` lưu câu hỏi/câu trả lời (không kèm tên/email/SĐT); nên nêu việc này và việc câu hỏi được gửi tới nhà cung cấp AI trong chính sách quyền riêng tư của website.
+
+## 9. Triển khai lên máy chủ thật (checklist)
 1. **Cấu hình bằng file riêng, không sửa mã nguồn:** sao chép `config/local.example.php` thành `config/local.php` (đã nằm trong `.gitignore`) rồi điền `DB_*`, `BASE_URL` (`''` nếu site ở gốc domain), `SITE_URL` (URL đầy đủ, dùng cho canonical/OpenGraph) và `APP_ENV => 'production'`. Cũng có thể đặt cùng tên bằng biến môi trường. Khi `APP_ENV=production`, site từ chối chạy nếu DB dùng `root` hoặc mật khẩu rỗng.
 2. Tạo user MySQL riêng chỉ có quyền trên database `bluesea_resort`; **không** dùng `root`.
 3. Đổi mật khẩu admin/staff mặc định, không import `demo_bookings.sql`, nhập đúng tài khoản ngân hàng ở Admin → Cài đặt.
@@ -88,7 +109,7 @@ curl -X POST http://localhost/BlueSeaResort/api/login.php \
 6. Thêm cron dọn đơn quá hạn (xem mục 5) và sao lưu database định kỳ.
 7. `logs/app.log` và ảnh trong `assets/images/uploads/` đã được `.gitignore`; không commit lại.
 
-## 9. Lưu ý
+## 10. Lưu ý
 - Hệ thống chỉ hỗ trợ 2 phương thức thanh toán: **Tiền mặt (tại resort)** và **Chuyển khoản ngân hàng**. VNPay/MoMo đã được gỡ khỏi giao diện và bị từ chối ở backend (chưa kết nối cổng thanh toán thật).
 - **Luồng thanh toán (cả Tiền mặt và Chuyển khoản):** khách chọn phương thức và bấm "Thanh toán ngay" → đơn chuyển sang **"Chờ thanh toán tại resort"** (tiền mặt) hoặc **"Chờ xác nhận chuyển khoản"** (chuyển khoản); chưa tính doanh thu, chưa có hóa đơn. Nhân viên lễ tân (Staff) hoặc Administrator nhận được tiền (tại quầy hoặc về tài khoản) rồi vào **Admin → Quản lý đặt phòng**, bấm nút ✔ "Xác nhận đã nhận tiền" → đơn mới chuyển sang **Đã xác nhận / Đã thanh toán** và phát sinh hóa đơn. Thao tác xác nhận an toàn khi bấm lặp lại (không tạo trùng hóa đơn).
 - **Chuyển khoản ngân hàng** tạo mã **QR thật theo chuẩn VietQR** (tự dựng chuỗi EMVCo + CRC16, vẽ SVG bằng thư viện PHP thuần `includes/qrcode/qrcode.php` — không gọi ảnh/API qua internet). Vào **Admin → Cài đặt**, mục "Tài khoản nhận chuyển khoản", nhập đúng số tài khoản thật + chọn ngân hàng thì mã QR sẽ quét được bằng app ngân hàng thật (chuyển đúng số tiền + nội dung "TT <mã đơn>" tự động). Việc xác nhận "đã thanh toán" là **thủ công do nhân viên/admin thực hiện** (xem mục trên) vì dự án không có quyền truy cập API đối soát của ngân hàng thật.

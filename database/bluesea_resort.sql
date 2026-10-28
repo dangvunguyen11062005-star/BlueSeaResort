@@ -211,3 +211,16 @@ CREATE TABLE login_attempts (
  INDEX idx_attempts_identifier (scope, identifier, created_at),
  INDEX idx_attempts_ip (scope, ip, created_at)
 );
+
+-- ===== Nhật ký AI (phiên bản 4) =====
+CREATE TABLE ai_logs (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    channel VARCHAR(20) NOT NULL,
+    session_hash CHAR(16) NOT NULL,
+    question TEXT NOT NULL,
+    answer TEXT NULL,
+    used_ai TINYINT(1) NOT NULL DEFAULT 1,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_ai_logs_created (created_at),
+    INDEX idx_ai_logs_channel (channel, created_at)
+);
