@@ -8,16 +8,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $email = trim($_POST['email'] ?? ''); $password = $_POST['password'] ?? '';
     if (!valid_email($email)) {
         $error = 'Email không đúng định dạng.';
+    } elseif (($wait = login_throttle_wait($pdo, 'admin', $email)) > 0) {
+        $error = login_locked_message($wait);
     } else {
         $s = $pdo->prepare("SELECT * FROM admins WHERE email=?");
         $s->execute([$email]);
         $a = $s->fetch();
         if ($a && password_matches($password, $a['password'])) {
             password_maybe_upgrade($pdo, 'admins', $a['id'], $password, $a['password']);
+            login_throttle_clear($pdo, 'admin', $email);
             session_regenerate_id(true);
+            unset($a['password']); // không giữ hash mật khẩu trong session
             $_SESSION['admin'] = $a;
+            // Tài khoản mẫu trong README: nhắc đổi ngay, nhất là khi đưa lên mạng
+            if (in_array($password, ['admin123', 'staff123'], true)) {
+                flash_set('Bạn đang dùng mật khẩu mặc định đã công khai trong README. Hãy đổi ngay tại Cài đặt → Đổi mật khẩu.', 'error');
+            }
             redirect(BASE_URL . '/admin/index.php');
         } else {
+            login_throttle_fail($pdo, 'admin', $email);
             $error = 'Email hoặc mật khẩu quản trị không đúng.';
         }
     }

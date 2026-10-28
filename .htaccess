@@ -1,2 +1,19 @@
 Options -Indexes
 AddDefaultCharset UTF-8
+
+# Không cho tải trực tiếp file nội bộ: SQL (có hash mật khẩu mẫu), log, cấu hình, ghi chú
+<FilesMatch "(\.(sql|log|md|bak|ini|env|dist)|local\.php|local\.example\.php)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+# Không cho truy cập thư mục .git và file ẩn (trừ .well-known cho chứng chỉ SSL)
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule (^|/)\.(?!well-known/) - [F,L]
+</IfModule>

@@ -128,12 +128,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 val = Math.max(parseInt(input.min) || 0, Math.min(parseInt(input.max) || 99, val));
                 input.value = val;
                 recalc();
-    document.getElementById('b-promo')?.addEventListener('input', recalc);
             });
         });
         input.addEventListener('input', recalc);
     });
+    // Gắn MỘT lần ngay khi tải trang (trước đây nằm lọt trong handler click của nút +/- nên chỉ gắn sau khi bấm và gắn lặp lại)
+    document.getElementById('b-promo')?.addEventListener('input', recalc);
     recalc();
+
+    /* Thay cho onchange/onclick viết thẳng trong HTML (CSP không cho script inline) */
+    document.querySelectorAll('[data-autosubmit]').forEach(el => {
+        el.addEventListener('change', () => el.form && el.form.requestSubmit());
+    });
+    document.querySelectorAll('[data-print]').forEach(btn => {
+        btn.addEventListener('click', () => window.print());
+    });
 
     /* Đổi loại phòng trong form đặt phòng -> chuyển sang phòng tương ứng, giữ ngày/khách đã chọn */
     document.querySelectorAll('[data-room-switch]').forEach(select => {

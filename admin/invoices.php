@@ -25,7 +25,7 @@ $w = $where ? ' WHERE ' . implode(' AND ', $where) : '';
 $base = "FROM payments p JOIN bookings b ON b.id=p.booking_id JOIN customers c ON c.id=b.customer_id
          JOIN rooms r ON r.id=b.room_id JOIN room_types rt ON rt.id=r.room_type_id" . $w;
 
-$sum = $pdo->prepare("SELECT COUNT(*) n, COALESCE(SUM(p.amount),0) total $base");
+$sum = $pdo->prepare("SELECT COUNT(*) n, COALESCE(SUM(CASE WHEN p.status='success' THEN p.amount ELSE 0 END),0) total $base");
 $sum->execute($params);
 $totals = $sum->fetch();
 
@@ -73,7 +73,7 @@ include '../includes/admin_header.php';
             <td><?= e($p['customer']) ?></td>
             <td><?= e($p['room_name']) ?></td>
             <td><?= e($p['method']) ?></td>
-            <td class="right"><b><?= money($p['amount']) ?></b></td>
+            <td class="right"><b><?= money($p['amount']) ?></b><?= $p['status'] === 'refunded' ? '<br><span class="badge badge-bad">Đã hoàn tiền</span>' : '' ?></td>
             <td class="actions"><a class="act" title="Xem / in hóa đơn" href="invoice.php?id=<?= (int)$p['id'] ?>"><?= icon('file-text') ?></a></td>
         </tr>
         <?php endforeach; ?>

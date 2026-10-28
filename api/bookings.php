@@ -42,9 +42,6 @@ api_run(function () {
     if ($nights < 1 || $out <= $in) api_error('Ngày trả phòng phải sau ngày nhận phòng.', 422, 'validation_error');
     if ($guests < 1 || $guests > $room['capacity']) api_error('Số khách vượt quá sức chứa của loại phòng này.', 422, 'validation_error');
 
-    $assigned = find_free_room($pdo, $room['room_type_id'], $in, $out, $roomId);
-    if (!$assigned) api_error('Loại phòng này đã hết phòng trong khoảng thời gian đã chọn.', 409, 'no_room_available');
-
     $roomTotal = $room['price'] * $nights;
     $serviceTotal = 0; $selected = [];
     foreach ((array)($b['services'] ?? []) as $svc) {
@@ -61,28 +58,18 @@ api_run(function () {
         if ($err) api_error($err, 400, 'invalid_promo');
         $discount = promo_discount($promo, $subtotal);
     }
-    $grand = $subtotal - $discount;
-    $code = 'BS' . date('ymdHis') . rand(10, 99);
 
-    $pdo->beginTransaction();
-    try {
-        if (db_is_v2()) {
-            $ins = $pdo->prepare("INSERT INTO bookings(booking_code,customer_id,room_id,check_in,check_out,guests,note,room_total,service_total,promo_code,discount_amount,grand_total,payment_method) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)");
-            $ins->execute([$code, $customer['id'], $assigned, $in, $out, $guests, $note, $roomTotal, $serviceTotal, $promo ? $promo['code'] : null, $discount, $grand, 'Chưa chọn']);
-        } else {
-            $ins = $pdo->prepare("INSERT INTO bookings(booking_code,customer_id,room_id,check_in,check_out,guests,note,room_total,service_total,grand_total,payment_method) VALUES(?,?,?,?,?,?,?,?,?,?,?)");
-            $ins->execute([$code, $customer['id'], $assigned, $in, $out, $guests, $note, $roomTotal, $serviceTotal, $grand, 'Chưa chọn']);
-        }
-        $bookingId = $pdo->lastInsertId();
-        $bs = $pdo->prepare("INSERT INTO booking_services(booking_id,service_id,quantity,total) VALUES(?,?,?,?)");
-        foreach ($selected as $x) $bs->execute([$bookingId, $x[0], $x[1], $x[2]]);
-        $pdo->commit();
-    } catch (Exception $ex) {
-        $pdo->rollBack();
-        throw $ex;
-    }
+    // Chọn phòng trống + ghi đơn trong CÙNG một transaction, có khóa dòng phòng -> không đặt trùng phòng
+    $created = create_booking_atomic($pdo, [
+        'customer_id' => $customer['id'], 'room_type_id' => $room['room_type_id'], 'preferred_room_id' => $roomId,
+        'check_in' => $in, 'check_out' => $out, 'guests' => $guests, 'note' => $note,
+        'room_total' => $roomTotal, 'service_total' => $serviceTotal,
+        'promo_code' => $promo ? $promo['code'] : null, 'discount' => $discount,
+        'grand_total' => $subtotal - $discount, 'services' => $selected,
+    ]);
+    if (!$created) api_error('Loại phòng này đã hết phòng trong khoảng thời gian đã chọn.', 409, 'no_room_available');
 
     $st = $pdo->prepare("SELECT * FROM bookings WHERE id=?");
-    $st->execute([$bookingId]);
+    $st->execute([$created['id']]);
     api_json(['data' => ['booking' => $st->fetch()]], 201);
 });

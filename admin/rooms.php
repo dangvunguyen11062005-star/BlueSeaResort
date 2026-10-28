@@ -60,7 +60,7 @@ include '../includes/admin_header.php';
 
 <form class="toolbar" method="get">
     <div class="search"><?= icon('search') ?><input class="input" type="text" name="q" value="<?= e($q) ?>" placeholder="Tìm kiếm phòng..."></div>
-    <select class="input" name="type" onchange="this.form.requestSubmit()">
+    <select class="input" name="type" data-autosubmit>
         <option value="0">Tất cả loại phòng</option>
         <?php foreach ($types as $t): ?>
             <option value="<?= $t['id'] ?>"<?= $typeFilter === (int)$t['id'] ? ' selected' : '' ?>><?= e($t['name']) ?></option>

@@ -19,6 +19,7 @@ Website đặt phòng và quản lý resort Phan Thiết – Mũi Né, dựng th
    - **Nếu bạn đã import `bluesea_resort.sql` từ bản trước** (không có chức năng Loại phòng / Hóa đơn / Khuyến mãi / Đánh giá / Cài đặt) và không muốn mất dữ liệu đang có: chọn database `bluesea_resort` → Import file **`database/upgrade_v2.sql`** (chỉ cần 1 lần, chạy lại nhiều lần cũng không lỗi). Ai cài mới hoàn toàn thì **không cần** file này.
    - ⚠️ Nếu import bằng dòng lệnh `mysql` thay vì phpMyAdmin, luôn thêm `--default-character-set=utf8mb4` để tránh lỗi hiển thị tiếng Việt (mojibake), ví dụ:
      `mysql --default-character-set=utf8mb4 -u root < database/bluesea_resort.sql`
+   - **Nếu bạn đã có database từ các bản trước (v1/v2)**: import thêm **`database/upgrade_v3.sql`** (1 lần, chạy lại không lỗi). File này thêm bảng tin nhắn liên hệ, bảng chống đoán mật khẩu, trạng thái hoàn tiền `refunded` và sửa các đơn đã hủy nhưng còn ghi "paid". Admin sẽ hiện cảnh báo đỏ cho tới khi bạn import.
    - Muốn xóa dữ liệu demo: import lại `bluesea_resort.sql` (sẽ xóa toàn bộ và tạo lại từ đầu).
 5. Mở VS Code:
    `File > Open Folder > C:\xampp\htdocs\BlueSeaResort`
@@ -26,6 +27,8 @@ Website đặt phòng và quản lý resort Phan Thiết – Mũi Né, dựng th
    `http://localhost/BlueSeaResort/`
 
 ## 3. Tài khoản demo
+> ⚠️ **Các tài khoản dưới đây chỉ để chạy thử trên máy cá nhân và đã công khai trong README này.** Khi đưa website lên mạng, **đổi ngay** mật khẩu `admin123` / `staff123` (Admin → Cài đặt → Đổi mật khẩu), đổi hoặc xóa khách demo, và không import `demo_bookings.sql`. Hệ thống sẽ nhắc trên màn hình mỗi lần đăng nhập admin bằng mật khẩu mặc định.
+
 ### Khách hàng
 Email: `nguyenvana@gmail.com` — Mật khẩu: `123456`
 (3 khách khác nếu đã import `demo_bookings.sql`: `tranthib@gmail.com`, `leminhc@gmail.com`, `phamquocd@gmail.com`, cùng mật khẩu `123456`)
@@ -53,6 +56,13 @@ Email: `nguyenvana@gmail.com` — Mật khẩu: `123456`
 - **CSRF:** mọi form POST (đặt phòng, thanh toán, đăng nhập/đăng ký, toàn bộ thao tác thêm/sửa/xóa trong admin...) đều có token ẩn, kiểm tra bằng `require_csrf()`. Submit thiếu token hoặc token sai → bị từ chối, quay lại trang với thông báo.
 - **Phân quyền (RBAC):** 2 vai trò admin (`admin`/`staff`), kiểm tra ở backend bằng `require_admin('admin')`, không chỉ ẩn ở giao diện.
 - **Validate dữ liệu:** email dùng `filter_var(FILTER_VALIDATE_EMAIL)` ở server (không chỉ dựa vào `type="email"` của trình duyệt), số điện thoại, ngày tháng, số khách... đều được kiểm tra trước khi ghi database.
+- **Chống đoán mật khẩu:** đăng nhập khách, đăng nhập admin và `api/login.php` đếm số lần SAI theo email (5 lần) và theo IP (20 lần) trong 15 phút, vượt ngưỡng thì khóa tạm (API trả 429 kèm `Retry-After`). Đăng nhập đúng xóa bộ đếm của email đó. Ngưỡng chỉnh ở `includes/rate_limit.php`. Form liên hệ giới hạn 5 tin/giờ/IP và có ô bẫy bot.
+- **Cookie phiên:** `HttpOnly`, `SameSite=Lax`, `Secure` (tự bật khi chạy HTTPS), chế độ strict mode. Session không còn chứa hash mật khẩu.
+- **Header bảo mật:** `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`, `Content-Security-Policy` (không cho script inline/script ngoài) và HSTS khi chạy HTTPS. Vì vậy **đừng viết `onclick=`/`<script>` inline**: đặt JS trong `assets/js/main.js` (đã có sẵn `data-autosubmit`, `data-print`).
+- **Đặt phòng không trùng:** chọn phòng trống và ghi đơn nằm trong một transaction, khóa dòng phòng bằng `SELECT ... FOR UPDATE` (xem `create_booking_atomic()` trong `includes/booking_service.php`). Mã đơn sinh bằng `random_bytes`.
+- **Giữ phòng có thời hạn:** đơn `pending` tự hủy khi chưa chọn thanh toán sau 24 giờ, chuyển khoản chưa được xác nhận sau 48 giờ, hoặc đã qua ngày nhận phòng (đơn "Tiền mặt" được giữ tới ngày nhận phòng vì khách trả tại quầy). Chỉnh ở đầu `includes/booking_service.php`. Hệ thống tự dọn khi có người xem phòng/đặt phòng; nên thêm cron cho đều: `*/15 * * * * php /đường/dẫn/cron/expire_bookings.php`.
+- **Trạng thái đơn & hoàn tiền:** chỉ cho các bước hợp lệ (pending → hủy; confirmed → check-in/hủy; check-in → trả phòng). Hủy đơn đã thu tiền chỉ dành cho Administrator và sẽ ghi nhận `refunded` (loại khỏi doanh thu, hóa đơn có nhãn "Đã hoàn tiền"); việc trả tiền thật cho khách làm ngoài hệ thống.
+- **Múi giờ:** `config/app.php` đặt `Asia/Ho_Chi_Minh`, `config/database.php` đồng bộ múi giờ phiên MySQL (`+07:00`) nên `CURDATE()`/`NOW()` luôn khớp PHP dù hosting để UTC.
 - **Xử lý ngoại lệ toàn cục:** `config/app.php` đăng ký `set_error_handler` / `set_exception_handler` / `register_shutdown_function`. Mọi lỗi PHP/SQL không mong muốn được ghi vào `logs/app.log`, người dùng chỉ thấy trang "Rất tiếc, có lỗi xảy ra" — không lộ đường dẫn file, câu SQL hay stack trace. Thư mục `logs/` có `.htaccess` chặn truy cập trực tiếp từ trình duyệt.
 
 ## 6. Cơ sở dữ liệu
@@ -69,7 +79,16 @@ curl -X POST http://localhost/BlueSeaResort/api/login.php \
   -d '{"email":"nguyenvana@gmail.com","password":"123456"}'
 ```
 
-## 8. Lưu ý
+## 8. Triển khai lên máy chủ thật (checklist)
+1. **Cấu hình bằng file riêng, không sửa mã nguồn:** sao chép `config/local.example.php` thành `config/local.php` (đã nằm trong `.gitignore`) rồi điền `DB_*`, `BASE_URL` (`''` nếu site ở gốc domain), `SITE_URL` (URL đầy đủ, dùng cho canonical/OpenGraph) và `APP_ENV => 'production'`. Cũng có thể đặt cùng tên bằng biến môi trường. Khi `APP_ENV=production`, site từ chối chạy nếu DB dùng `root` hoặc mật khẩu rỗng.
+2. Tạo user MySQL riêng chỉ có quyền trên database `bluesea_resort`; **không** dùng `root`.
+3. Đổi mật khẩu admin/staff mặc định, không import `demo_bookings.sql`, nhập đúng tài khoản ngân hàng ở Admin → Cài đặt.
+4. Bật HTTPS (cookie `Secure` và HSTS tự bật theo). Nếu đứng sau proxy/CDN của bạn, đặt `TRUST_PROXY=1` để lấy đúng IP khách cho bộ đếm đăng nhập sai.
+5. Dùng Apache có `AllowOverride All` để các file `.htaccess` có hiệu lực: chặn tải `.sql/.log/.md/local.php`, chặn chạy PHP trong `assets/images/uploads/`, chặn xem `logs/`. Với Nginx cần viết quy tắc tương đương.
+6. Thêm cron dọn đơn quá hạn (xem mục 5) và sao lưu database định kỳ.
+7. `logs/app.log` và ảnh trong `assets/images/uploads/` đã được `.gitignore`; không commit lại.
+
+## 9. Lưu ý
 - Hệ thống chỉ hỗ trợ 2 phương thức thanh toán: **Tiền mặt (tại resort)** và **Chuyển khoản ngân hàng**. VNPay/MoMo đã được gỡ khỏi giao diện và bị từ chối ở backend (chưa kết nối cổng thanh toán thật).
 - **Luồng thanh toán (cả Tiền mặt và Chuyển khoản):** khách chọn phương thức và bấm "Thanh toán ngay" → đơn chuyển sang **"Chờ thanh toán tại resort"** (tiền mặt) hoặc **"Chờ xác nhận chuyển khoản"** (chuyển khoản); chưa tính doanh thu, chưa có hóa đơn. Nhân viên lễ tân (Staff) hoặc Administrator nhận được tiền (tại quầy hoặc về tài khoản) rồi vào **Admin → Quản lý đặt phòng**, bấm nút ✔ "Xác nhận đã nhận tiền" → đơn mới chuyển sang **Đã xác nhận / Đã thanh toán** và phát sinh hóa đơn. Thao tác xác nhận an toàn khi bấm lặp lại (không tạo trùng hóa đơn).
 - **Chuyển khoản ngân hàng** tạo mã **QR thật theo chuẩn VietQR** (tự dựng chuỗi EMVCo + CRC16, vẽ SVG bằng thư viện PHP thuần `includes/qrcode/qrcode.php` — không gọi ảnh/API qua internet). Vào **Admin → Cài đặt**, mục "Tài khoản nhận chuyển khoản", nhập đúng số tài khoản thật + chọn ngân hàng thì mã QR sẽ quét được bằng app ngân hàng thật (chuyển đúng số tiền + nội dung "TT <mã đơn>" tự động). Việc xác nhận "đã thanh toán" là **thủ công do nhân viên/admin thực hiện** (xem mục trên) vì dự án không có quyền truy cập API đối soát của ngân hàng thật.

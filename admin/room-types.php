@@ -16,7 +16,7 @@ function save_room_image(array $file) {
     if (!$ext) return false;
     $dir = __DIR__ . '/../assets/images/uploads';
     if (!is_dir($dir)) @mkdir($dir, 0775, true);
-    $name = 'uploads/rt_' . time() . '_' . mt_rand(100, 999) . '.' . $ext;
+    $name = 'uploads/rt_' . bin2hex(random_bytes(8)) . '.' . $ext;
     return move_uploaded_file($file['tmp_name'], __DIR__ . '/../assets/images/' . $name) ? $name : false;
 }
 

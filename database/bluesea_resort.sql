@@ -2,7 +2,7 @@ CREATE DATABASE IF NOT EXISTS bluesea_resort CHARACTER SET utf8mb4 COLLATE utf8m
 USE bluesea_resort;
 
 SET FOREIGN_KEY_CHECKS=0;
-DROP TABLE IF EXISTS api_tokens, reviews, promotions, settings, payments, booking_services, bookings, services, rooms, room_types, customers, admins;
+DROP TABLE IF EXISTS contact_messages, login_attempts, api_tokens, reviews, promotions, settings, payments, booking_services, bookings, services, rooms, room_types, customers, admins;
 SET FOREIGN_KEY_CHECKS=1;
 
 CREATE TABLE admins (
@@ -71,8 +71,10 @@ CREATE TABLE bookings (
  grand_total DECIMAL(12,0) NOT NULL,
  status ENUM('pending','confirmed','checked_in','checked_out','cancelled') DEFAULT 'pending',
  payment_method VARCHAR(50) DEFAULT 'cash',
- payment_status ENUM('unpaid','paid') DEFAULT 'unpaid',
+ payment_status ENUM('unpaid','paid','refunded') NOT NULL DEFAULT 'unpaid',
  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+ INDEX idx_bookings_room_dates (room_id, check_in, check_out),
+ INDEX idx_bookings_status_created (status, created_at),
  CONSTRAINT fk_bookings_customer FOREIGN KEY (customer_id) REFERENCES customers(id)
      ON DELETE RESTRICT ON UPDATE CASCADE,
  CONSTRAINT fk_bookings_room FOREIGN KEY (room_id) REFERENCES rooms(id)
@@ -187,3 +189,25 @@ INSERT INTO settings(setting_key,setting_value) VALUES
 ('bank_bin','970436'),
 ('bank_account_no','0123456789'),
 ('bank_account_name','BLUESEA RESORT');
+
+-- ===== Phiên bản 3: tin nhắn liên hệ + chống đoán mật khẩu =====
+CREATE TABLE contact_messages (
+ id INT AUTO_INCREMENT PRIMARY KEY,
+ name VARCHAR(120) NOT NULL,
+ email VARCHAR(150) NOT NULL,
+ message TEXT NOT NULL,
+ status ENUM('new','read') NOT NULL DEFAULT 'new',
+ ip VARCHAR(45) NULL,
+ created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ INDEX idx_contact_status (status, created_at)
+);
+
+CREATE TABLE login_attempts (
+ id BIGINT AUTO_INCREMENT PRIMARY KEY,
+ scope VARCHAR(20) NOT NULL,
+ identifier VARCHAR(150) NOT NULL,
+ ip VARCHAR(45) NOT NULL,
+ created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ INDEX idx_attempts_identifier (scope, identifier, created_at),
+ INDEX idx_attempts_ip (scope, ip, created_at)
+);

@@ -24,7 +24,7 @@ include '../includes/admin_header.php';
     <div><h1><?= icon('receipt') ?>Chi tiết hóa đơn</h1></div>
     <div style="display:flex;gap:10px">
         <a class="btn btn-outline" href="invoices.php"><?= icon('chevron-left') ?>Quay lại</a>
-        <button class="btn btn-primary" type="button" onclick="window.print()">In hóa đơn</button>
+        <button class="btn btn-primary" type="button" data-print>In hóa đơn</button>
     </div>
 </div>
 
@@ -69,7 +69,7 @@ include '../includes/admin_header.php';
         <tr class="total"><td colspan="2">Tổng thanh toán</td><td class="right"><?= money($inv['paid_amount']) ?></td></tr>
     </table>
 
-    <p class="muted" style="margin-top:14px">Phương thức thanh toán: <b><?= e($inv['pay_method']) ?></b> · Trạng thái: <b>Đã thanh toán</b></p>
+    <p class="muted" style="margin-top:14px">Phương thức thanh toán: <b><?= e($inv['pay_method']) ?></b> · Trạng thái: <b><?= ($inv['payment_status'] ?? '') === 'refunded' ? 'Đã hoàn tiền (đơn đã hủy)' : 'Đã thanh toán' ?></b></p>
     <p class="muted" style="margin-top:22px;text-align:center">Cảm ơn quý khách đã lựa chọn <?= e(setting('resort_name', 'BlueSea Resort')) ?>!</p>
 </article>
 <?php include '../includes/admin_footer.php'; ?>

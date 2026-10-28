@@ -9,16 +9,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $email = trim($_POST['email'] ?? ''); $password = $_POST['password'] ?? '';
     if (!valid_email($email)) {
         $error = 'Email không đúng định dạng.';
+    } elseif (($wait = login_throttle_wait($pdo, 'customer', $email)) > 0) {
+        $error = login_locked_message($wait); // đã sai quá nhiều lần: khóa tạm, không kiểm tra mật khẩu nữa
     } else {
         $stmt = $pdo->prepare("SELECT * FROM customers WHERE email=?");
         $stmt->execute([$email]);
         $u = $stmt->fetch();
         if ($u && password_matches($password, $u['password'])) {
             password_maybe_upgrade($pdo, 'customers', $u['id'], $password, $u['password']);
+            login_throttle_clear($pdo, 'customer', $email);
             session_regenerate_id(true); // tránh session fixation khi đổi quyền từ khách vãng lai -> đã đăng nhập
+            unset($u['password']);       // không giữ hash mật khẩu trong session
             $_SESSION['customer'] = $u;
             redirect($next);
         } else {
+            login_throttle_fail($pdo, 'customer', $email);
             $error = 'Email hoặc mật khẩu không đúng.';
         }
     }

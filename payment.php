@@ -3,6 +3,7 @@ require_once 'config/database.php';
 require_once 'config/app.php';
 require_once 'includes/vietqr.php';
 require_customer();
+expire_stale_bookings($pdo);
 
 $id = (int)($_GET['id'] ?? 0);
 $stmt = $pdo->prepare("SELECT b.*, rt.name, rt.image FROM bookings b JOIN rooms r ON r.id=b.room_id JOIN room_types rt ON rt.id=r.room_type_id WHERE b.id=? AND b.customer_id=?");

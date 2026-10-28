@@ -32,48 +32,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         elseif ($nights < 1 || $out <= $in) $error = 'Ngày trả phòng phải sau ngày nhận phòng.';
         elseif ($guests < 1 || $guests > $room['capacity']) $error = 'Số khách vượt quá sức chứa của loại phòng này.';
         else {
-            // Chọn một phòng còn trống cùng loại trong khoảng ngày đã chọn
-            $assigned = find_free_room($pdo, $room['room_type_id'], $in, $out, $roomId);
-            if (!$assigned) {
-                $error = 'Loại phòng này đã hết phòng trong khoảng thời gian bạn chọn. Vui lòng đổi ngày hoặc chọn loại phòng khác.';
-                $suggest = suggest_free_ranges($pdo, $room['room_type_id'], $in, $out);
-            } else {
-                $roomTotal = $room['price'] * $nights; $serviceTotal = 0; $selected = [];
-                foreach ($services as $s) {
-                    $qty = max(0, min(20, (int)($_POST['service_' . $s['id']] ?? 0)));
-                    if ($qty > 0) { $total = $qty * $s['price']; $serviceTotal += $total; $selected[] = [$s['id'], $qty, $total]; }
+            $roomTotal = $room['price'] * $nights; $serviceTotal = 0; $selected = [];
+            foreach ($services as $s) {
+                $qty = max(0, min(20, (int)($_POST['service_' . $s['id']] ?? 0)));
+                if ($qty > 0) { $total = $qty * $s['price']; $serviceTotal += $total; $selected[] = [$s['id'], $qty, $total]; }
+            }
+            $subtotal = $roomTotal + $serviceTotal;
+            $promo = null; $discount = 0;
+            if (trim($_POST['promo_code'] ?? '') !== '') {
+                if (!db_is_v2()) {
+                    $error = 'Chức năng khuyến mãi chưa sẵn sàng (cần nâng cấp cơ sở dữ liệu).';
+                } else {
+                    [$promo, $promoErr] = promo_lookup($pdo, $_POST['promo_code'], $subtotal);
+                    if ($promoErr) $error = $promoErr; else $discount = promo_discount($promo, $subtotal);
                 }
-                $subtotal = $roomTotal + $serviceTotal;
-                $promo = null; $discount = 0;
-                if (trim($_POST['promo_code'] ?? '') !== '') {
-                    if (!db_is_v2()) {
-                        $error = 'Chức năng khuyến mãi chưa sẵn sàng (cần nâng cấp cơ sở dữ liệu).';
-                    } else {
-                        [$promo, $promoErr] = promo_lookup($pdo, $_POST['promo_code'], $subtotal);
-                        if ($promoErr) $error = $promoErr; else $discount = promo_discount($promo, $subtotal);
-                    }
-                }
-                $grand = $subtotal - $discount;
-                $code = 'BS' . date('ymdHis') . rand(10, 99);
-                if ($error === '') {
-                $pdo->beginTransaction();
+            }
+            if ($error === '') {
                 try {
-                    if (db_is_v2()) {
-                        $ins = $pdo->prepare("INSERT INTO bookings(booking_code,customer_id,room_id,check_in,check_out,guests,note,room_total,service_total,promo_code,discount_amount,grand_total,payment_method) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)");
-                        $ins->execute([$code, $customer['id'], $assigned, $in, $out, $guests, trim($_POST['note'] ?? ''), $roomTotal, $serviceTotal, $promo ? $promo['code'] : null, $discount, $grand, 'Chưa chọn']);
-                    } else {
-                        $ins = $pdo->prepare("INSERT INTO bookings(booking_code,customer_id,room_id,check_in,check_out,guests,note,room_total,service_total,grand_total,payment_method) VALUES(?,?,?,?,?,?,?,?,?,?,?)");
-                        $ins->execute([$code, $customer['id'], $assigned, $in, $out, $guests, trim($_POST['note'] ?? ''), $roomTotal, $serviceTotal, $grand, 'Chưa chọn']);
-                    }
-                    $bookingId = $pdo->lastInsertId();
-                    $bs = $pdo->prepare("INSERT INTO booking_services(booking_id,service_id,quantity,total) VALUES(?,?,?,?)");
-                    foreach ($selected as $x) $bs->execute([$bookingId, $x[0], $x[1], $x[2]]);
-                    $pdo->commit();
-                    redirect(BASE_URL . '/payment.php?id=' . $bookingId);
-                } catch (Exception $ex) {
-                    $pdo->rollBack();
+                    // Chọn phòng trống + ghi đơn nằm trong CÙNG một transaction, có khóa dòng phòng -> không đặt trùng phòng
+                    $created = create_booking_atomic($pdo, [
+                        'customer_id' => $customer['id'], 'room_type_id' => $room['room_type_id'], 'preferred_room_id' => $roomId,
+                        'check_in' => $in, 'check_out' => $out, 'guests' => $guests, 'note' => trim($_POST['note'] ?? ''),
+                        'room_total' => $roomTotal, 'service_total' => $serviceTotal,
+                        'promo_code' => $promo ? $promo['code'] : null, 'discount' => $discount,
+                        'grand_total' => $subtotal - $discount, 'services' => $selected,
+                    ]);
+                    if ($created) redirect(BASE_URL . '/payment.php?id=' . $created['id']);
+                    $error = 'Loại phòng này đã hết phòng trong khoảng thời gian bạn chọn. Vui lòng đổi ngày hoặc chọn loại phòng khác.';
+                    $suggest = suggest_free_ranges($pdo, $room['room_type_id'], $in, $out);
+                } catch (Throwable $ex) {
+                    error_log('[booking] ' . $ex->getMessage());
                     $error = 'Có lỗi khi tạo đơn đặt phòng. Vui lòng thử lại.';
-                }
                 }
             }
         }

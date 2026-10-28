@@ -8,7 +8,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $name = trim($_POST['name'] ?? ''); $phone = trim($_POST['phone'] ?? ''); $email = trim($_POST['email'] ?? ''); $password = $_POST['password'] ?? '';
     if ($name === '' || mb_strlen($name) > 120) {
         $error = 'Vui lòng nhập họ tên hợp lệ.';
-    } elseif (!preg_match('/^[0-9+\-\s]{8,15}$/', $phone)) {
+    } elseif (!valid_phone($phone)) {
         $error = 'Số điện thoại không hợp lệ (8-15 số).';
     } elseif (!valid_email($email)) {
         $error = 'Email không đúng định dạng.';

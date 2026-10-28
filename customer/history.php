@@ -2,6 +2,7 @@
 require_once '../config/database.php';
 require_once '../config/app.php';
 require_customer();
+expire_stale_bookings($pdo);
 $page_title = 'Lịch sử đặt phòng';
 $account_active = 'history';
 

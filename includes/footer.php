@@ -31,7 +31,7 @@
             <p class="line"><?= icon('mail') ?><span><?= e(setting('email', 'hello@bluesearesort.vn')) ?></span></p>
         </div>
     </div>
-    <div class="copyright">© <?= date('Y') ?> <?= e(setting('resort_name', 'BlueSea Resort')) ?>. Dự án demo phục vụ đồ án tốt nghiệp.</div>
+    <div class="copyright">© <?= date('Y') ?> <?= e(setting('resort_name', 'BlueSea Resort')) ?>. Bảo lưu mọi quyền.</div>
 </footer>
 <?php endif; ?>
 <script src="<?= BASE_URL ?>/assets/js/main.js?v=<?= @filemtime(__DIR__ . '/../assets/js/main.js') ?: 1 ?>"></script>

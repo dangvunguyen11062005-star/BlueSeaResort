@@ -14,6 +14,7 @@ $admin_nav = [
     ['invoices.php', 'Quản lý hóa đơn', 'receipt', false],
     ['promotions.php', 'Khuyến mãi', 'ticket-percent', true],
     ['reviews.php', 'Đánh giá', 'message-square', false],
+    ['messages.php', 'Tin nhắn liên hệ', 'mail', false],
     ['statistics.php', 'Thống kê', 'chart-line', false],
     ['settings.php', 'Cài đặt', 'settings', true],
 ];
@@ -21,12 +22,16 @@ $admin_nav = [
 $admin_alias = ['invoice.php' => 'invoices.php'];
 $cur = $admin_alias[$cur] ?? $cur;
 $isStaff = is_admin_role('staff');
+// Số tin nhắn liên hệ chưa xử lý (hiện cạnh tên menu); bỏ qua êm nếu chưa có bảng
+$unreadMessages = 0;
+try { $unreadMessages = (int)$pdo->query("SELECT COUNT(*) FROM contact_messages WHERE status='new'")->fetchColumn(); } catch (Throwable $e) { /* chưa nâng cấp v3 */ }
 ?>
 <!doctype html>
 <html lang="vi">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
 <title><?= e($page_title ?? 'Admin - BlueSea Resort') ?> · Admin</title>
 <link rel="icon" type="image/svg+xml" href="<?= img('logo.svg') ?>">
 <link rel="stylesheet" href="<?= BASE_URL ?>/assets/css/style.css?v=<?= $css_v ?>">
@@ -42,7 +47,7 @@ $isStaff = is_admin_role('staff');
             <?php if ($adminOnly && $isStaff): ?>
                 <span class="soon" title="Chỉ Administrator mới có quyền truy cập"><?= icon('lock') ?><?= $label ?></span>
             <?php else: ?>
-                <a href="<?= BASE_URL ?>/admin/<?= $file ?>"<?= $cur === $file ? ' class="active" aria-current="page"' : '' ?>><?= icon($ic) ?><?= $label ?></a>
+                <a href="<?= BASE_URL ?>/admin/<?= $file ?>"<?= $cur === $file ? ' class="active" aria-current="page"' : '' ?>><?= icon($ic) ?><?= $label ?><?= ($file === 'messages.php' && $unreadMessages > 0) ? ' (' . $unreadMessages . ')' : '' ?></a>
             <?php endif; ?>
         <?php endforeach; ?>
     </nav>
@@ -56,6 +61,9 @@ $isStaff = is_admin_role('staff');
 <div class="admin-content">
 <?php if (function_exists('db_is_v2') && !db_is_v2()): ?>
     <div class="alert error" role="alert"><?= icon('circle-x') ?><span><b>Cơ sở dữ liệu chưa được nâng cấp.</b> Vào phpMyAdmin, chọn database <code>bluesea_resort</code> → Import file <code>database/upgrade_v2.sql</code> để dùng đủ chức năng Loại phòng, Hóa đơn, Khuyến mãi, Đánh giá, Cài đặt.</span></div>
+<?php endif; ?>
+<?php if (function_exists('db_is_v3') && db_is_v2() && !db_is_v3()): ?>
+    <div class="alert error" role="alert"><?= icon('circle-x') ?><span><b>Cần nâng cấp cơ sở dữ liệu (v3).</b> Import file <code>database/upgrade_v3.sql</code> để bật: lưu tin nhắn liên hệ, khóa tạm khi đăng nhập sai nhiều lần và trạng thái hoàn tiền.</span></div>
 <?php endif; ?>
 <?php if ($flash = flash_get()): ?>
     <div class="alert <?= $flash[0] === 'error' ? 'error' : 'success' ?>" role="status"><?= icon($flash[0] === 'error' ? 'circle-x' : 'circle-check') ?><span><?= e($flash[1]) ?></span></div>

@@ -32,23 +32,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'confi
     redirect(BASE_URL . '/admin/bookings.php' . (isset($_POST['tab']) ? '?tab=' . urlencode($_POST['tab']) : ''));
 }
 
+/* Đổi trạng thái đơn. Chỉ cho các bước hợp lệ (xem booking_allowed_transitions()):
+   pending -> cancelled | confirmed -> checked_in / cancelled | checked_in -> checked_out. "confirmed" chỉ đến từ "Xác nhận đã nhận tiền".
+   Hủy đơn ĐÃ THU TIỀN = hủy + ghi nhận hoàn tiền (payment_status='refunded', payments.status='refunded') nên đơn bị loại khỏi doanh thu;
+   chỉ Administrator được làm việc này, vì việc hoàn tiền thật cho khách phải được thực hiện ngoài hệ thống. */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['status'], $_POST['id'])) {
     require_csrf();
-    $id = (int)$_POST['id']; $status = $_POST['status'];
-    $allowed = ['pending', 'confirmed', 'checked_in', 'checked_out', 'cancelled'];
-    if (in_array($status, $allowed, true)) {
-        $pdo->prepare("UPDATE bookings SET status=? WHERE id=?")->execute([$status, $id]);
-        flash_set('Đã cập nhật trạng thái đơn.');
-    } else {
-        flash_set('Trạng thái không hợp lệ.', 'error');
+    $id = (int)$_POST['id']; $to = (string)$_POST['status'];
+    $back = BASE_URL . '/admin/bookings.php' . (isset($_POST['tab']) ? '?tab=' . urlencode($_POST['tab']) : '');
+    try {
+        $pdo->beginTransaction();
+        $row = $pdo->prepare("SELECT status, payment_status, booking_code, grand_total FROM bookings WHERE id=? FOR UPDATE");
+        $row->execute([$id]);
+        $cur = $row->fetch();
+        $allowed = booking_allowed_transitions();
+        if (!$cur) {
+            $pdo->rollBack();
+            flash_set('Không tìm thấy đơn.', 'error');
+        } elseif (!in_array($to, $allowed[$cur['status']] ?? [], true)) {
+            $pdo->rollBack();
+            flash_set('Không thể chuyển đơn ' . $cur['booking_code'] . ' từ "' . booking_status($cur['status'])[0] . '" sang "' . booking_status($to)[0] . '".', 'error');
+        } elseif ($to === 'cancelled' && $cur['payment_status'] === 'paid') {
+            if (!is_admin_role('admin')) {
+                $pdo->rollBack();
+                flash_set('Đơn ' . $cur['booking_code'] . ' đã thu tiền: chỉ Administrator mới được hủy và hoàn tiền.', 'error');
+            } else {
+                $pdo->prepare("UPDATE bookings SET status='cancelled', payment_status='refunded' WHERE id=?")->execute([$id]);
+                $pdo->prepare("UPDATE payments SET status='refunded' WHERE booking_id=? AND status='success'")->execute([$id]);
+                $pdo->commit();
+                flash_set('Đã hủy đơn ' . $cur['booking_code'] . ' và ghi nhận HOÀN TIỀN ' . money($cur['grand_total']) . '. Đơn không còn tính vào doanh thu - hãy hoàn tiền thực tế cho khách.');
+            }
+        } else {
+            $pdo->prepare("UPDATE bookings SET status=? WHERE id=?")->execute([$to, $id]);
+            $pdo->commit();
+            flash_set('Đã cập nhật trạng thái đơn.');
+        }
+    } catch (Throwable $ex) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        error_log('[admin][status] ' . $ex->getMessage());
+        flash_set('Không cập nhật được trạng thái' . (db_is_v3() ? '.' : ' (có thể cần import database/upgrade_v3.sql).'), 'error');
     }
-    redirect(BASE_URL . '/admin/bookings.php' . (isset($_POST['tab']) ? '?tab=' . urlencode($_POST['tab']) : ''));
+    redirect($back);
 }
 
 $tabs = ['all' => 'Tất cả', 'pending' => 'Chờ thanh toán', 'confirmed' => 'Đã xác nhận', 'checked_in' => 'Đang lưu trú', 'checked_out' => 'Đã trả phòng', 'cancelled' => 'Đã hủy'];
 $tab = $_GET['tab'] ?? 'all';
 if (!isset($tabs[$tab])) $tab = 'all';
 $q = trim($_GET['q'] ?? '');
+expire_stale_bookings($pdo); // tự hủy đơn chờ thanh toán quá hạn trước khi hiển thị danh sách
 
 $where = []; $params = [];
 if ($tab !== 'all') { $where[] = 'b.status = ?'; $params[] = $tab; }
@@ -101,8 +132,9 @@ include '../includes/admin_header.php';
                     <form method="post"><?= csrf_field() ?><input type="hidden" name="id" value="<?= (int)$b['id'] ?>"><input type="hidden" name="status" value="checked_out"><input type="hidden" name="tab" value="<?= e($tab) ?>">
                         <button class="act" type="submit" title="Trả phòng"><?= icon('door-open') ?></button></form>
                 <?php endif; ?>
-                <?php if (!in_array($b['status'], ['cancelled', 'checked_out'], true)): ?>
-                    <form method="post" data-confirm="Hủy đơn <?= e($b['booking_code']) ?>?"><?= csrf_field() ?><input type="hidden" name="id" value="<?= (int)$b['id'] ?>"><input type="hidden" name="status" value="cancelled"><input type="hidden" name="tab" value="<?= e($tab) ?>">
+                <?php $paidLocked = $b['payment_status'] === 'paid' && is_admin_role('staff'); // Staff không được hủy/hoàn tiền đơn đã thu ?>
+                <?php if (in_array($b['status'], ['pending', 'confirmed'], true) && !$paidLocked): ?>
+                    <form method="post" data-confirm="<?= $b['payment_status'] === 'paid' ? 'Đơn ' . e($b['booking_code']) . ' ĐÃ THU TIỀN. Hủy đơn sẽ ghi nhận HOÀN TIỀN ' . e(money($b['grand_total'])) . ' và loại đơn khỏi doanh thu. Tiếp tục?' : 'Hủy đơn ' . e($b['booking_code']) . '?' ?>"><?= csrf_field() ?><input type="hidden" name="id" value="<?= (int)$b['id'] ?>"><input type="hidden" name="status" value="cancelled"><input type="hidden" name="tab" value="<?= e($tab) ?>">
                         <button class="act del" type="submit" title="Hủy đơn"><?= icon('circle-x') ?></button></form>
                 <?php endif; ?>
                 <button class="act" type="button" title="Chi tiết" data-open-dialog="dlg-<?= (int)$b['id'] ?>"><?= icon('file-text') ?></button>
@@ -123,7 +155,7 @@ include '../includes/admin_header.php';
             <dt>Nhận / Trả</dt><dd><?= date_vn($b['check_in']) ?> - <?= date_vn($b['check_out']) ?></dd>
             <dt>Số khách</dt><dd><?= (int)$b['guests'] ?> người</dd>
             <dt>Trạng thái</dt><dd><span class="badge badge-<?= $tone ?>"><?= $label ?></span></dd>
-            <dt>Thanh toán</dt><dd><?= e($b['payment_method']) ?> — <?= $b['payment_status'] === 'paid' ? 'Đã thanh toán' : (booking_awaiting_payment($b) ? 'Chờ xác nhận đã nhận tiền' : 'Chưa thanh toán') ?></dd>
+            <dt>Thanh toán</dt><dd><?= e($b['payment_method']) ?> — <?= booking_awaiting_payment($b) ? 'Chờ xác nhận đã nhận tiền' : e(payment_status_label($b['payment_status'])) ?></dd>
         </dl>
         <div class="bill-row"><span>Tiền phòng</span><b><?= money($b['room_total']) ?></b></div>
         <div class="bill-row"><span>Dịch vụ thêm</span><b><?= money($b['service_total']) ?></b></div>

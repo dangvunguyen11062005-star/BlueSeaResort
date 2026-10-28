@@ -17,7 +17,7 @@ api_run(function () {
     $password = (string)($b['password'] ?? '');
 
     if ($name === '' || mb_strlen($name) > 120) api_error('Họ tên không hợp lệ.', 422, 'validation_error');
-    if (!preg_match('/^[0-9+\-\s]{8,15}$/', $phone)) api_error('Số điện thoại không hợp lệ (8-15 số).', 422, 'validation_error');
+    if (!valid_phone($phone)) api_error('Số điện thoại không hợp lệ (8-15 số).', 422, 'validation_error');
     if (!valid_email($email)) api_error('Email không đúng định dạng.', 422, 'validation_error');
     if (strlen($password) < 6) api_error('Mật khẩu phải có ít nhất 6 ký tự.', 422, 'validation_error');
 

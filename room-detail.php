@@ -16,6 +16,8 @@ if (!$room) {
 }
 
 $page_title = $room['name'];
+$page_description = $room['name'] . ' tại ' . setting('resort_name', 'BlueSea Resort') . ': ' . ($room['description'] ?? '');
+$canonical_params = ['id' => $id];
 $reviewStats = ['n' => 0, 'avg' => 0];
 $reviews = [];
 if (db_is_v2()) {

@@ -1,8 +1,57 @@
 <?php
-if (session_status() === PHP_SESSION_NONE) session_start();
+require_once __DIR__ . '/env.php';
 
-define('BASE_URL', '/BlueSeaResort');
+// Múi giờ Việt Nam: PHP (date, strtotime) và MySQL (CURDATE, NOW - xem config/database.php) phải cùng múi giờ,
+// nếu không trên hosting UTC thì từ 0h-7h sáng "hôm nay" bị coi là hôm qua.
+date_default_timezone_set(app_timezone()); // mặc định 'Asia/Ho_Chi_Minh' (đổi được bằng APP_TIMEZONE nếu cần)
+
+define('BASE_URL', rtrim((string)env_config('BASE_URL', '/BlueSeaResort'), '/'));
 define('APP_LOG_DIR', __DIR__ . '/../logs');
+
+function app_is_https() {
+    return (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+        || (($_SERVER['SERVER_PORT'] ?? '') === '443')
+        || (strtolower($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
+}
+
+/* URL tuyệt đối của site (kèm thư mục con nếu có), dùng cho canonical / OpenGraph.
+   Ưu tiên SITE_URL đã cấu hình; chỉ suy ra từ Host khi chưa cấu hình (và Host phải hợp lệ). */
+function site_url() {
+    $cfg = (string)env_config('SITE_URL', '');
+    if ($cfg !== '') return rtrim($cfg, '/');
+    $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+    if (!preg_match('/^[A-Za-z0-9.\-]+(:\d+)?$/', $host)) $host = 'localhost';
+    return (app_is_https() ? 'https://' : 'http://') . $host . BASE_URL;
+}
+
+/* Header bảo mật. CSP cho phép style inline (giao diện có dùng style=""), nhưng KHÔNG cho phép script inline
+   hay script từ nơi khác: mọi JS nằm trong assets/js/main.js. */
+function app_send_security_headers() {
+    if (PHP_SAPI === 'cli' || headers_sent()) return;
+    header_remove('X-Powered-By');
+    header('X-Frame-Options: SAMEORIGIN');
+    header('X-Content-Type-Options: nosniff');
+    header('Referrer-Policy: strict-origin-when-cross-origin');
+    header('Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()');
+    header("Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+         . "img-src 'self' data:; font-src 'self' data:; connect-src 'self'; object-src 'none'; "
+         . "base-uri 'self'; form-action 'self'; frame-ancestors 'self'");
+    if (app_is_https()) header('Strict-Transport-Security: max-age=15552000');
+}
+
+if (session_status() === PHP_SESSION_NONE && PHP_SAPI !== 'cli') {
+    ini_set('session.use_strict_mode', '1');
+    ini_set('session.use_only_cookies', '1');
+    session_set_cookie_params([
+        'lifetime' => 0,
+        'path'     => BASE_URL === '' ? '/' : BASE_URL,
+        'secure'   => app_is_https(),   // chỉ gửi cookie qua HTTPS khi site chạy HTTPS (localhost http vẫn dùng được)
+        'httponly' => true,             // JS không đọc được cookie phiên
+        'samesite' => 'Lax',            // hạn chế CSRF từ site khác
+    ]);
+    session_start();
+}
+app_send_security_headers();
 
 require_once __DIR__ . '/../includes/icons.php';
 
@@ -123,6 +172,11 @@ function password_maybe_upgrade(PDO $pdo, $table, $id, $plain, $hashFromDb) {
 /* ---------- Kiểm tra định dạng email phía server (không chỉ dựa vào type="email" của trình duyệt) ---------- */
 function valid_email($email) {
     return filter_var($email, FILTER_VALIDATE_EMAIL) !== false && strlen($email) <= 150;
+}
+
+/* Số điện thoại: 8-15 ký tự gồm số, +, -, khoảng trắng (dùng chung cho đăng ký, sửa hồ sơ, API) */
+function valid_phone($phone) {
+    return (bool)preg_match('/^[0-9+\-\s]{8,15}$/', (string)$phone);
 }
 
 /* =====================================================
@@ -288,9 +342,16 @@ function url_with($path, array $params = []) {
     return BASE_URL . '/' . ltrim($path, '/') . ($params ? '?' . http_build_query($params) : '');
 }
 
-/* ---------- Chọn phòng còn trống theo loại phòng ---------- */
-function find_free_room(PDO $pdo, $typeId, $in, $out, $preferred = null) {
-    $st = $pdo->prepare("SELECT id FROM rooms WHERE room_type_id=? AND status<>'maintenance' ORDER BY id");
+/* ---------- Chọn phòng còn trống theo loại phòng ----------
+   $forUpdate = true: BẮT BUỘC gọi trong một transaction đang mở. Hàm khóa (SELECT ... FOR UPDATE) toàn bộ phòng của loại
+   này trước khi kiểm tra lịch đặt, nên hai khách đặt cùng lúc sẽ xếp hàng lần lượt: người sau chờ người trước ghi xong đơn
+   (và commit) rồi mới kiểm tra, nên không bao giờ nhận trùng một phòng.
+   Lưu ý: truy vấn kiểm tra lịch phía dưới là lần đọc nhất quán ĐẦU TIÊN của transaction nên snapshot được tạo SAU khi đã giữ khóa. */
+function find_free_room(PDO $pdo, $typeId, $in, $out, $preferred = null, $forUpdate = false) {
+    if ($forUpdate && !$pdo->inTransaction()) {
+        throw new LogicException('find_free_room(..., forUpdate=true) phải được gọi trong transaction.');
+    }
+    $st = $pdo->prepare("SELECT id FROM rooms WHERE room_type_id=? AND status<>'maintenance' ORDER BY id" . ($forUpdate ? ' FOR UPDATE' : ''));
     $st->execute([$typeId]);
     $ids = array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN));
     if ($preferred && in_array((int)$preferred, $ids, true)) {
@@ -319,6 +380,7 @@ function stay_range_error($in, $out) {
    check_in < ngày ra VÀ check_out > ngày vào (khách cũ trả phòng đúng ngày khách mới nhận thì KHÔNG trùng).
    Trả về ['total' => tổng phòng đang hoạt động, 'free' => số phòng còn trống]. */
 function room_type_availability(PDO $pdo, $typeId, $in, $out) {
+    expire_stale_bookings($pdo); // nhả phòng của các đơn chờ thanh toán đã quá hạn
     $tot = $pdo->prepare("SELECT COUNT(*) FROM rooms WHERE room_type_id=? AND status<>'maintenance'");
     $tot->execute([$typeId]);
     $free = $pdo->prepare("SELECT COUNT(*) FROM rooms r WHERE r.room_type_id=? AND r.status<>'maintenance'
@@ -399,6 +461,26 @@ function db_is_v2() {
     return $v2;
 }
 
+/* Bản nâng cấp 3: bảng contact_messages, login_attempts và trạng thái thanh toán 'refunded' (database/upgrade_v3.sql) */
+function db_is_v3() {
+    static $v3 = null;
+    if ($v3 !== null) return $v3;
+    global $pdo;
+    if (!isset($pdo)) { $v3 = false; return $v3; }
+    try {
+        $col = $pdo->query("SHOW COLUMNS FROM bookings LIKE 'payment_status'")->fetch();
+        $v3 = (bool)$pdo->query("SHOW TABLES LIKE 'contact_messages'")->fetch()
+           && (bool)$pdo->query("SHOW TABLES LIKE 'login_attempts'")->fetch()
+           && $col && strpos((string)$col['Type'], 'refunded') !== false;
+    } catch (Exception $e) { $v3 = false; }
+    return $v3;
+}
+
+function payment_status_label($s) {
+    $map = ['unpaid' => 'Chưa thanh toán', 'paid' => 'Đã thanh toán', 'refunded' => 'Đã hoàn tiền'];
+    return $map[$s] ?? (string)$s;
+}
+
 /* ---------- Cài đặt resort (bảng settings), có giá trị mặc định nếu chưa nâng cấp ---------- */
 function setting($key, $default = '') {
     static $cache = null;
@@ -459,5 +541,8 @@ function review_status($s) {
     return $map[$s] ?? [$s, 'info'];
 }
 function payment_method_label($m) { return $m ?: 'Chưa chọn'; }
+
+require_once __DIR__ . '/../includes/rate_limit.php';
+require_once __DIR__ . '/../includes/booking_service.php';
 
 ?>

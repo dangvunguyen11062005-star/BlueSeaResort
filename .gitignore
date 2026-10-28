@@ -1,0 +1,18 @@
+# Nhật ký lỗi (chứa đường dẫn, câu SQL, đôi khi dữ liệu khách) - không đưa lên Git
+logs/*.log
+
+# Ảnh do admin tải lên - dữ liệu của từng môi trường
+assets/images/uploads/*
+!assets/images/uploads/.gitkeep
+!assets/images/uploads/.htaccess
+
+# Cấu hình riêng từng máy chủ (mật khẩu DB, SITE_URL...) - dùng config/local.example.php làm mẫu
+config/local.php
+.env
+
+# Hệ điều hành / trình soạn thảo
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
